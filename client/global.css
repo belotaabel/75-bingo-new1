@@ -119,6 +119,7 @@ button:focus-visible { outline: 2px solid #7df4ff; outline-offset: 3px; }
 .bottom-nav { position: fixed; z-index: 5; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; gap: min(7vw, 54px); min-height: 100px; padding: 13px 24px 20px; background: #06082a; box-shadow: 0 -10px 30px #101a60; }
 .bottom-nav button { display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 145px; height: 59px; border: 1px solid #216dff; border-radius: 30px; background: #080d38; box-shadow: 0 0 12px #1559ff; font-size: 19px; }
 .bottom-nav .lobby { border-color: #b326ed; box-shadow: 0 0 13px #b326ed; }
+.bottom-nav .game-tab { border-color: #46d9ff; background: linear-gradient(135deg, #123b76, #17105d); box-shadow: 0 0 16px #168cff; }
 .bottom-nav svg { width: 29px; }
 .bottom-nav .home { width: 74px; min-width: 74px; height: 74px; border-color: #bb35ff; border-radius: 50%; background: #1a0e58; box-shadow: 0 0 22px #ae26ff; }
 .bottom-nav .home svg { width: 38px; height: 38px; }
@@ -129,5 +130,5 @@ button:focus-visible { outline: 2px solid #7df4ff; outline-offset: 3px; }
   .stats-row { gap: 6px; }.stat { grid-template-columns: 23px 1fr; min-height: 76px; padding: 8px 6px; }.stat svg { width: 22px; }.stat small { font-size: 9px; }.stat b { font-size: 19px; }
   .number-board { gap: 5px; }.number-board button { font-size: 11px; }.number-board-75 { padding: 8px 5px; gap: 3px; }.number-board-row { grid-template-columns: 24px repeat(15, minmax(0, 1fr)); gap: 3px; }.number-board-label { font-size: 19px; }.number-board-75 button { aspect-ratio: 1.1; font-size: 10px; }
   .tickets { gap: 7px; margin-top: 16px; }.ticket-card { padding: 8px 6px; border-radius: 14px; }.ticket-title { margin-bottom: 7px; font-size: 10px; }.ticket-title b { font-size: 14px; }.ticket-grid span { min-height: 22px; font-size: 10px; }
-  .bottom-nav { gap: 12px; min-height: 82px; padding: 9px 14px 14px; }.bottom-nav button { min-width: 100px; height: 48px; font-size: 15px; }.bottom-nav .home { width: 62px; min-width: 62px; height: 62px; }.bottom-nav .home svg { width: 30px; height: 30px; }.notice { bottom: 88px; }
+  .bottom-nav { gap: 6px; min-height: 82px; padding: 9px 8px 14px; }.bottom-nav button { flex: 1; min-width: 0; height: 48px; gap: 5px; font-size: 13px; }.bottom-nav .home { width: auto; min-width: 0; height: 48px; border-radius: 30px; }.bottom-nav .home svg { width: 30px; height: 30px; }.notice { bottom: 88px; }
 }

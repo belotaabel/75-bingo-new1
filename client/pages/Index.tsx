@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bell,
+  Gamepad2,
   Home,
   MoreVertical,
   Star,
@@ -576,9 +577,13 @@ export default function Index() {
         {countdown !== null ? `ይጀምራል ${countdown}` : "ጨዋታ ጀምር"}
       </button>
       <nav className="bottom-nav">
-        <button onClick={() => { setScreen("landing"); setCountdown(null); setSelected([]); setNotice(""); }}>
+        <button className="lobby" onClick={() => { setScreen("landing"); setCountdown(null); setSelected([]); setNotice(""); }}>
           <Home />
           <span>Lobby</span>
+        </button>
+        <button className="game-tab" onClick={() => { setScreen("selection"); setPanel(null); setNotice(""); }} aria-current="page">
+          <Gamepad2 />
+          <span>Game</span>
         </button>
         <button onClick={() => setPanel("wallet")}>
           <Wallet />
