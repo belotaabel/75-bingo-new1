@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: 90bingo2
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/ping
+    autoDeploy: true
