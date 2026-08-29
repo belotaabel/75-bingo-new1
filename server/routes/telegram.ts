@@ -18,23 +18,11 @@ function mainMenu() {
   };
 }
 
-function gameLandingUrl(miniAppUrl: string | undefined, gameType: "90" | "75") {
-  if (!miniAppUrl) return undefined;
+function gameMenu(miniAppUrl?: string) {
+  if (!miniAppUrl) return mainMenu();
   const url = new URL(miniAppUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, "")}/bingo/${gameType}`;
-  return url.toString();
-}
-
-function gameChoiceMenu(miniAppUrl?: string) {
-  const bingo90Url = gameLandingUrl(miniAppUrl, "90");
-  const bingo75Url = gameLandingUrl(miniAppUrl, "75");
-  if (!bingo90Url || !bingo75Url) return mainMenu();
-  return {
-    inline_keyboard: [[
-      { text: "90 BINGO", web_app: { url: bingo90Url } },
-      { text: "75 BINGO", web_app: { url: bingo75Url } },
-    ]],
-  };
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/bingo/75`;
+  return { inline_keyboard: [[{ text: "75 BINGO", web_app: { url: url.toString() } }]] };
 }
 
 function contactRequestMenu() {
@@ -92,7 +80,7 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
     // Reply before touching the database. A database outage must not make Telegram
     // wait for (and eventually retry) the /start update without a response.
     await sendTelegramMessage(token, chatId, {
-      text: "እንኳን ወደ 90Bingo በደህና መጡ! ከታች ያለውን ምናሌ ይጠቀሙ።",
+      text: "እንኳን ወደ 75Bingo በደህና መጡ! ከታች ያለውን ምናሌ ይጠቀሙ።",
       reply_markup: mainMenu(),
     });
     if (message.from?.id) {
@@ -140,8 +128,8 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
     };
     if (text === "🎮 Play Bingo") {
       await sendTelegramMessage(token, chatId, {
-        text: "ጨዋታ ይምረጡ።",
-        reply_markup: gameChoiceMenu(miniAppUrl),
+        text: "75 ቢንጎ ይጫወቱ።",
+        reply_markup: gameMenu(miniAppUrl),
       });
     } else if (text === "📝 Register") {
       await sendTelegramMessage(token, chatId, { text: responses[text], reply_markup: contactRequestMenu() });

@@ -11,7 +11,7 @@ export interface DemoResponse {
   message: string;
 }
 
-export type BingoGameType = "90" | "75";
+export type BingoGameType = "75";
 
 export interface BingoWinner {
   userId: number;

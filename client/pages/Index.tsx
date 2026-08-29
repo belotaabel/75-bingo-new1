@@ -20,7 +20,7 @@ type User = {
   display_name: string;
   balance: number | string;
 };
-type GameType = "90" | "75";
+type GameType = "75";
 type GameState = {
   calledNumbers: number[];
   currentBall: number | null;
@@ -42,7 +42,7 @@ function CardView({
   selected,
   called,
   onClick,
-  gameType = "90",
+  gameType = "75",
 }: {
   card: Card;
   selected: boolean;
@@ -86,7 +86,8 @@ function CardView({
   );
 }
 
-export default function Index({ gameType }: { gameType: GameType }) {
+export default function Index() {
+  const gameType: GameType = "75";
   const [screen, setScreen] = useState<"landing" | "selection">("landing");
   // The gateway selects the configured game service from the gameType query parameter.
   // Empty bases preserve the local same-origin development fallback.
@@ -296,8 +297,6 @@ export default function Index({ gameType }: { gameType: GameType }) {
     const rows = card.rows
       .map((row, index) => (complete(row) ? index + 1 : null))
       .filter((line): line is number => line !== null);
-    if (gameType === "90") return rows;
-
     const columns = card.rows[0]
       ?.map((_, columnIndex) =>
         complete(card.rows.map((row) => row[columnIndex])) ? columnIndex + 6 : null,
@@ -346,7 +345,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
             <br />
             <em>BINGO</em>
           </h2>
-          <p>{gameType === "90" ? "የ90" : "የ75"} ቢንጎ ጨዋታን ይጫወቱ።</p>
+          <p>የ75 ቢንጎ ጨዋታን ይጫወቱ።</p>
           <div className="landing-highlights">
             <span>400 ካርዶች</span>
             <i /> <span>እስከ 2 ካርዶች</span>
@@ -408,16 +407,16 @@ export default function Index({ gameType }: { gameType: GameType }) {
             <Star />
             <span>
               <small>የተጠሩ</small>
-              <b>{called.size}/{gameType === "75" ? 75 : 90}</b>
+              <b>{called.size}/75</b>
             </span>
           </div>
         </section>
         <section className="draw">
           <p>የአሁኑ ቁጥር</p>
           <div className="current-ball-layout">
-            <strong className="ball-letter">{currentBall === null ? "—" : gameType === "75" ? (currentBall <= 15 ? "B" : currentBall <= 30 ? "I" : currentBall <= 45 ? "N" : currentBall <= 60 ? "G" : "O") : ""}</strong>
+            <strong className="ball-letter">{currentBall === null ? "—" : currentBall <= 15 ? "B" : currentBall <= 30 ? "I" : currentBall <= 45 ? "N" : currentBall <= 60 ? "G" : "O"}</strong>
             <div className="orb">{currentBall ?? "—"}</div>
-            <span className="called-count">{called.size}/{gameType === "75" ? 75 : 90}</span>
+            <span className="called-count">{called.size}/75</span>
           </div>
         </section>
         <section className="ball-history" aria-label="Called ball history">
@@ -459,10 +458,10 @@ export default function Index({ gameType }: { gameType: GameType }) {
               <h2>{winners.length > 1 ? "አሸናፊዎች ተገኝተዋል" : "አሸናፊ ተገኝቷል"}</h2>
               <div className="winner-prize">{((game?.prizeAmount ?? 0) / winners.length).toFixed(2)} ብር / እያናቸው</div>
               <p>የአሸናፊው ስም: <b>{winners.map((item) => item.displayName).join(", ")}</b></p>
-              <p>የአሸናፊ ካርዶች: <b>{winnerCardIds.map((id) => gameType === "75" ? (id > 400 ? id - 400 : id) : id).join(", ")}</b></p>
+              <p>የአሸናፊ ካርዶች: <b>{winnerCardIds.map((id) => id > 400 ? id - 400 : id).join(", ")}</b></p>
               <p>የተዘጉ መስመሮች: <b>{winners.map((item) => item.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 ? "ዲያጎናል 1" : row === 12 ? "ዲያጎናል 2" : `አምድ ${row - 5}`).join(", ")).join("; ")}</b></p>
               <div className="winner-card-preview">
-                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><small>ካርድ #{gameType === "75" && id > 400 ? id - 400 : id}</small><CardView card={card} selected called={called} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
+                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><small>ካርድ #{id > 400 ? id - 400 : id}</small><CardView card={card} selected called={called} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
               </div>
               <small>አዲስ ጨዋታ በቅርቡ ይጀምራል...</small>
             </div>

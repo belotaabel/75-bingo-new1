@@ -4,10 +4,9 @@ export const db = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 
-export type GameType = "90" | "75";
+export type GameType = "75";
 export type BingoCardRecord = { card_number: number; rows: number[][]; game_type?: GameType };
 
-const columnRanges = [[1, 18], [19, 36], [37, 54], [55, 72], [73, 90]] as const;
 const bingo75Ranges = [[1, 15], [16, 30], [31, 45], [46, 60], [61, 75]] as const;
 
 function build75Card(cardNumber: number): BingoCardRecord {
@@ -15,23 +14,6 @@ function build75Card(cardNumber: number): BingoCardRecord {
   return { card_number: cardNumber, rows, game_type: "75" };
 }
 
-function buildCard(cardNumber: number): BingoCardRecord {
-  const usedByColumn = columnRanges.map(() => new Set<number>());
-  const rows = Array.from({ length: 3 }, (_, rowIndex) =>
-    columnRanges.map(([minimum, maximum], columnIndex) => {
-      const rangeSize = maximum - minimum + 1;
-      let offset = ((cardNumber - 1) * 11 + rowIndex * 17 + columnIndex * 7) % rangeSize;
-      let number = minimum + offset;
-      while (usedByColumn[columnIndex].has(number)) {
-        offset = (offset + 1) % rangeSize;
-        number = minimum + offset;
-      }
-      usedByColumn[columnIndex].add(number);
-      return number;
-    }),
-  );
-  return { card_number: cardNumber, rows };
-}
 
 export async function initializeDatabase() {
   if (!db) return;
@@ -47,7 +29,7 @@ export async function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS games (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      game_type TEXT NOT NULL DEFAULT '90',
+      game_type TEXT NOT NULL DEFAULT '75',
       status TEXT NOT NULL DEFAULT 'selecting' CHECK (status IN ('selecting', 'finalizing', 'playing', 'finished')),
       prize_pool NUMERIC(12, 2) NOT NULL DEFAULT 0,
       called_numbers INTEGER[] NOT NULL DEFAULT '{}',
@@ -56,7 +38,7 @@ export async function initializeDatabase() {
       finished_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    ALTER TABLE games ADD COLUMN IF NOT EXISTS game_type TEXT NOT NULL DEFAULT '90';
+    ALTER TABLE games ADD COLUMN IF NOT EXISTS game_type TEXT NOT NULL DEFAULT '75';
     ALTER TABLE games ADD COLUMN IF NOT EXISTS selecting_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE games ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;
     ALTER TABLE games DROP CONSTRAINT IF EXISTS games_status_check;
@@ -188,11 +170,11 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS bingo_cards (
       card_number INTEGER PRIMARY KEY CHECK (card_number BETWEEN 1 AND 400),
       rows JSONB NOT NULL,
-      game_type TEXT NOT NULL DEFAULT '90',
+      game_type TEXT NOT NULL DEFAULT '75',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE bingo_cards DROP CONSTRAINT IF EXISTS bingo_cards_card_number_check;
-    ALTER TABLE bingo_cards ADD COLUMN IF NOT EXISTS game_type TEXT NOT NULL DEFAULT '90';
+    ALTER TABLE bingo_cards ADD COLUMN IF NOT EXISTS game_type TEXT NOT NULL DEFAULT '75';
     ALTER TABLE bingo_cards DROP CONSTRAINT IF EXISTS bingo_cards_card_number_check;
     ALTER TABLE bingo_cards ADD CONSTRAINT bingo_cards_card_number_check CHECK (card_number BETWEEN 1 AND 800);
     ALTER TABLE bingo_cards DROP CONSTRAINT IF EXISTS bingo_cards_game_type_check;
@@ -201,7 +183,7 @@ export async function initializeDatabase() {
     ALTER TABLE winners DROP CONSTRAINT IF EXISTS winners_game_card_unique;
     ALTER TABLE winners ADD CONSTRAINT winners_game_card_unique UNIQUE (game_id, user_id, card_number);
     INSERT INTO bingo_cards (card_number, rows, game_type)
-    SELECT source.card_number, source.rows, COALESCE(source.game_type, '90')
+    SELECT source.card_number, source.rows, COALESCE(source.game_type, '75')
     FROM jsonb_to_recordset($1::jsonb) AS source(card_number INTEGER, rows JSONB, game_type TEXT)
     ON CONFLICT (card_number) DO UPDATE SET rows = EXCLUDED.rows, game_type = EXCLUDED.game_type;
     INSERT INTO games (status)
@@ -209,7 +191,6 @@ export async function initializeDatabase() {
     WHERE NOT EXISTS (SELECT 1 FROM games WHERE status IN ('selecting', 'playing'));
   `;
   const cardRows = JSON.stringify([
-    ...Array.from({ length: 400 }, (_, index) => buildCard(index + 1)),
     ...Array.from({ length: 400 }, (_, index) => ({ ...build75Card(index + 1), card_number: index + 401 })),
   ]);
   for (const statement of schemaSql.split(";").map((sql) => sql.trim()).filter(Boolean)) {
@@ -398,25 +379,23 @@ export async function getTelegramProfile(telegramId: number) {
   return result.rows[0] ?? null;
 }
 
-export async function getCardCatalog(gameType: GameType = "90") {
+export async function getCardCatalog() {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const result = await db.query<BingoCardRecord>(
     "SELECT card_number, rows, game_type FROM bingo_cards WHERE game_type = $1 ORDER BY card_number",
-    [gameType],
+    ["75"],
   );
-  if (gameType === "75") result.rows.forEach((card) => { card.card_number -= 400; });
+  result.rows.forEach((card) => { card.card_number -= 400; });
   return result.rows;
 }
 
-export async function getActiveGame(gameType: GameType = "90", userId?: number) {
+export async function getActiveGame(userId?: number) {
+  const gameType: GameType = "75";
   if (!db) throw new Error("DATABASE_URL is not configured");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    // Keep the 90-ball and 75-ball game lifecycles independent. A shared
-    // advisory lock here lets activity in one mode serialize acquisition of
-    // the other mode's game, especially during concurrent joins/ticks.
-    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [90210, gameType === "75" ? 75 : 90]);
+    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [90210, 75]);
     const result = await client.query(
       `SELECT id, status, prize_pool, called_numbers, current_number, selecting_started_at
        FROM games
@@ -438,7 +417,7 @@ export async function getActiveGame(gameType: GameType = "90", userId?: number) 
       : { rows: [] as Array<{ card_number: number }> };
     const occupiedCardNumbers = occupiedResult.rows.map((row) => {
       const cardNumber = Number(row.card_number);
-      return gameType === "75" ? cardNumber - 400 : cardNumber;
+      return cardNumber - 400;
     });
     await client.query("COMMIT");
     const selectionEndsAt = game.selecting_started_at
@@ -453,7 +432,8 @@ export async function getActiveGame(gameType: GameType = "90", userId?: number) 
   }
 }
 
-export async function persistSelectedCards(gameId: string, userId: number, cardNumbers: number[], gameType: GameType = "90") {
+export async function persistSelectedCards(gameId: string, userId: number, cardNumbers: number[]) {
+  const gameType: GameType = "75";
   if (!db) throw new Error("DATABASE_URL is not configured");
   const client = await db.connect();
   try {
@@ -461,7 +441,7 @@ export async function persistSelectedCards(gameId: string, userId: number, cardN
     const gameStatus = await client.query("SELECT status, selecting_started_at FROM games WHERE id = $1 AND game_type = $2 FOR UPDATE", [gameId, gameType]);
     if (!gameStatus.rowCount) throw new Error("Game not found");
     if (gameStatus.rows[0].status !== "selecting" || Date.now() - new Date(gameStatus.rows[0].selecting_started_at).getTime() >= 50000) throw new Error("ጨዋታ እየተካሄደ ነው");
-    const storedCards = gameType === "75" ? cardNumbers.map((n) => n + 400) : cardNumbers;
+    const storedCards = cardNumbers.map((n) => n + 400);
     const validCards = await client.query(
       "SELECT card_number FROM bingo_cards WHERE game_type = $1 AND card_number = ANY($2::int[])",
       [gameType, storedCards],
@@ -509,19 +489,20 @@ export async function persistSelectedCards(gameId: string, userId: number, cardN
   }
 }
 
-export async function advanceSelectingGame(gameType?: GameType) {
+export async function advanceSelectingGame() {
+  const gameType: GameType = "75";
   if (!db) throw new Error("DATABASE_URL is not configured");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [90210, gameType === "75" ? 75 : 90]);
+    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [90210, 75]);
     const result = await client.query(
       `SELECT g.id, COUNT(gc.card_number)::int AS card_count FROM games g
        LEFT JOIN game_cards gc ON gc.game_id = g.id
-       WHERE g.status = 'selecting' AND ($1::text IS NULL OR g.game_type = $1)
+       WHERE g.status = 'selecting' AND g.game_type = $1
        GROUP BY g.id, g.created_at, g.selecting_started_at
        HAVING NOW() - g.selecting_started_at >= INTERVAL '50 seconds'
-       ORDER BY g.created_at ASC LIMIT 1`, [gameType ?? null]);
+       ORDER BY g.created_at ASC LIMIT 1`, [gameType]);
     if (!result.rowCount) { await client.query("COMMIT"); return null; }
     const gameId = String(result.rows[0].id);
     if (Number(result.rows[0].card_count) > 0) {
@@ -536,13 +517,13 @@ export async function advanceSelectingGame(gameType?: GameType) {
   finally { client.release(); }
 }
 
-export async function startFinalizingGame(gameId: string, gameType: GameType = "90") {
+export async function startFinalizingGame(gameId: string) {
   if (!db) throw new Error("DATABASE_URL is not configured");
-  const result = await db.query("UPDATE games SET status = 'playing' WHERE id = $1 AND game_type = $2 AND status = 'finalizing' RETURNING id", [gameId, gameType]);
+  const result = await db.query("UPDATE games SET status = 'playing' WHERE id = $1 AND game_type = $2 AND status = 'finalizing' RETURNING id", [gameId, "75"]);
   return result.rowCount > 0;
 }
 
-export async function claimGameWinners(gameId: string, gameType: GameType = "90") {
+export async function claimGameWinners(gameId: string) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const client = await db.connect();
   try {
@@ -561,13 +542,11 @@ export async function claimGameWinners(gameId: string, gameType: GameType = "90"
       const grid = row.rows as number[][];
       const complete = (values: number[]) => values.every((n) => n === 0 || called.has(n));
       const winningRows = grid.map((numbers, index) => complete(numbers) ? index + 1 : null).filter((index): index is number => index !== null);
-      if (gameType === "75") {
-        const winningCols = grid[0].map((_, c) => complete(grid.map((r) => r[c])) ? c + 6 : null).filter((x): x is number => x !== null);
-        const diagonals = [complete(grid.map((r, i) => r[i])), complete(grid.map((r, i) => r[4 - i]))];
-        const corners = [grid[0][0], grid[0][4], grid[4][0], grid[4][4]].every((n) => called.has(n));
-        if (!winningRows.length && !winningCols.length && !diagonals.some(Boolean) && !corners) continue;
-        winningRows.push(...winningCols, ...(diagonals[0] ? [11] : []), ...(diagonals[1] ? [12] : []), ...(corners ? [13] : []));
-      } else if (winningRows.length < 2) continue;
+      const winningCols = grid[0].map((_, c) => complete(grid.map((r) => r[c])) ? c + 6 : null).filter((x): x is number => x !== null);
+      const diagonals = [complete(grid.map((r, i) => r[i])), complete(grid.map((r, i) => r[4 - i]))];
+      const corners = [grid[0][0], grid[0][4], grid[4][0], grid[4][4]].every((n) => called.has(n));
+      if (!winningRows.length && !winningCols.length && !diagonals.some(Boolean) && !corners) continue;
+      winningRows.push(...winningCols, ...(diagonals[0] ? [11] : []), ...(diagonals[1] ? [12] : []), ...(corners ? [13] : []));
       const existing = await client.query("SELECT 1 FROM winners WHERE game_id = $1 AND user_id = $2 AND card_number = $3", [gameId, row.user_id, row.card_number]);
       if (!existing.rowCount) candidates.push({ userId: Number(row.user_id), cardNumber: Number(row.card_number), rows: winningRows });
     }
@@ -619,7 +598,7 @@ export async function readGameState(gameId: string) {
   return { ...result.rows[0], winners: winners.rows };
 }
 
-export async function callNextNumber(gameId: string, gameType: GameType = "90") {
+export async function callNextNumber(gameId: string) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const client = await db.connect();
   try {
@@ -635,7 +614,7 @@ export async function callNextNumber(gameId: string, gameType: GameType = "90") 
       return null;
     }
     const calledNumbers = (gameResult.rows[0].called_numbers ?? []) as number[];
-    const remaining = Array.from({ length: gameType === "75" ? 75 : 90 }, (_, index) => index + 1).filter((number) => !calledNumbers.includes(number));
+    const remaining = Array.from({ length: 75 }, (_, index) => index + 1).filter((number) => !calledNumbers.includes(number));
     if (!remaining.length) {
       await client.query("UPDATE games SET status = 'finished', finished_at = NOW() WHERE id = $1", [gameId]);
       await client.query("COMMIT");
