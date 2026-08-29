@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { getTelegramUser } from "./routes/me";
-import { advanceSelectingGame, callNextNumber, claimGameWinners, getActiveGame, persistSelectedCards, readGameState, startFinalizingGame, type GameType } from "./db";
+import { advanceSelectingGame, callNextNumber, claimGameWinners, getActiveGame, getTelegramProfile, persistSelectedCards, readGameState, startFinalizingGame, type GameType } from "./db";
 import type { BingoWinner } from "@shared/api";
 
 type GameState = {
@@ -104,7 +104,9 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "75") {
     socket.on("game:join", async ({ playerId, cardNumbers }: { playerId?: string | number; cardNumbers?: number[] }) => {
       try {
         const parsedPlayerId = Number(playerId);
-        if (!Number.isSafeInteger(parsedPlayerId) || parsedPlayerId <= 0 || parsedPlayerId !== socket.data.telegramId) {
+        const profile = await getTelegramProfile(socket.data.telegramId);
+        const authenticatedPlayerId = profile ? Number(profile.id) : null;
+        if (!profile || !Number.isSafeInteger(parsedPlayerId) || parsedPlayerId <= 0 || parsedPlayerId !== authenticatedPlayerId) {
           socket.emit("game:error", { message: "Telegram player verification failed." });
           return;
         }
