@@ -581,7 +581,27 @@ export default function Index() {
           <Home />
           <span>Lobby</span>
         </button>
-        <button className="game-tab" onClick={() => { setScreen("selection"); setPanel(null); setNotice(""); }} aria-current="page">
+        <button
+          className="game-tab"
+          onClick={() => {
+            setScreen("selection");
+            setPanel(null);
+            setNotice("");
+            if (selectionGameStatus === "playing") {
+              setFinalizing(false);
+              setCountdown(null);
+              setPlaying(true);
+            } else if (selectionGameStatus === "finalizing") {
+              setPlaying(false);
+              setFinalizing(true);
+              setCountdown(null);
+            } else {
+              setPlaying(false);
+              setFinalizing(false);
+            }
+          }}
+          aria-current="page"
+        >
           <Gamepad2 />
           <span>Game</span>
         </button>
