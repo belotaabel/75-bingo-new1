@@ -11,7 +11,7 @@ import { handleWallet, handleDeposit, handleWithdrawal } from "./routes/wallet";
 export type ServiceMode = "75" | "gateway";
 export const serviceMode: ServiceMode = process.env.SERVICE_MODE === "gateway" ? "gateway" : "75";
 
-const gameServiceUrl = () => (process.env.GAME_SERVICE_URL_75 ?? "").replace(/\/$/, "");
+const gameServiceUrl = () => (process.env.GAME_SERVICE_URL_75 ?? "https://seven5bingoo.onrender.com").replace(/\/$/, "");
 
 async function proxyGameRequest(req: express.Request, res: express.Response) {
   if (serviceMode !== "gateway") return res.status(404).json({ error: "Game endpoint unavailable" });

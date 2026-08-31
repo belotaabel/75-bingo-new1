@@ -3,7 +3,7 @@ import { io as connectToGame } from "socket.io-client";
 
 export function registerGatewaySockets(io: Server) {
   io.on("connection", (socket) => {
-    const target = (process.env.GAME_SERVICE_URL_75 ?? "").replace(/\/$/, "");
+    const target = (process.env.GAME_SERVICE_URL_75 ?? "https://seven5bingoo.onrender.com").replace(/\/$/, "");
     if (!target) {
       socket.emit("game:error", { message: "GAME_SERVICE_URL_75 is not configured" });
       socket.disconnect(true);
