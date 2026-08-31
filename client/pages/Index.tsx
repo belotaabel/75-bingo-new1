@@ -272,7 +272,11 @@ export default function Index() {
   );
   const cardForId = (id: number) => {
     const visibleId = gameType === "75" && id > 400 ? id - 400 : id;
-    return cards.find((card) => card.card_number === visibleId);
+    const card = cards.find((candidate) => {
+      const cardNumber = Number(candidate.card_number);
+      return cardNumber === visibleId || (gameType === "75" && cardNumber === visibleId + 400);
+    });
+    return card ? { ...card, card_number: visibleId } : undefined;
   };
   const selectionLocked = selectionGameStatus === "playing";
   const toggle = (id: number) => {
