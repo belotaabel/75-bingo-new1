@@ -32,6 +32,16 @@ type GameState = {
   selectionEndsAt: string | null;
   gameId: string;
 };
+
+const isWinningCell = (lineId: number, rowIndex: number, columnIndex: number) => {
+  if (lineId >= 1 && lineId <= 5) return rowIndex === lineId - 1;
+  if (lineId >= 6 && lineId <= 10) return columnIndex === lineId - 6;
+  if (lineId === 11) return rowIndex === columnIndex;
+  if (lineId === 12) return rowIndex + columnIndex === 4;
+  if (lineId === 13) return (rowIndex === 0 || rowIndex === 4) && (columnIndex === 0 || columnIndex === 4);
+  return false;
+};
+
 declare global {
   interface Window {
     Telegram?: { WebApp?: { initData?: string; ready?: () => void } };
@@ -43,12 +53,14 @@ function CardView({
   selected,
   called,
   onClick,
+  winningLineIds,
   gameType = "75",
 }: {
   card: Card;
   selected: boolean;
   called: Set<number>;
   onClick: () => void;
+  winningLineIds?: number[];
   gameType?: GameType;
 }) {
   return (
@@ -75,7 +87,11 @@ function CardView({
           row.map((number, columnIndex) => (
             <span
               key={`${rowIndex}-${columnIndex}`}
-              className={number === 0 || (number !== null && called.has(number)) ? "marked" : ""}
+              className={[
+                number === 0 || (number !== null && called.has(number)) ? "marked" : "",
+                winningLineIds?.some((lineId) => isWinningCell(lineId, rowIndex, columnIndex)) ? "winning-cell" : "",
+                winningLineIds ? "winner-card-cell" : "",
+              ].filter(Boolean).join(" ")}
             >
               {number === 0 ? "FREE" : number}
             </span>
@@ -452,22 +468,18 @@ export default function Index() {
         </section>
         {winner && (
           <>
-            <div className="confetti" aria-label="Winner celebration">
-              {Array.from({ length: 28 }, (_, index) => (
-                <i key={index} style={{ left: `${(index * 37) % 100}%`, animationDelay: `${-(index % 9) / 3}s` }} />
-              ))}
-            </div>
             <div className="winner-modal" role="status">
-              <div className="winner-crown" aria-hidden="true">♛</div>
-              <div className="winner-badge"><span>🎉</span> BINGO! <span>🎉</span></div>
-              <h2>{winners.length > 1 ? "አሸናፊዎች ተገኝተዋል" : "አሸናፊ ተገኝቷል"}</h2>
-              <div className="winner-prize">{((game?.prizeAmount ?? 0) / winners.length).toFixed(2)} ብር / እያናቸው</div>
-              <p>የአሸናፊው ስም: <b>{winners.map((item) => item.displayName).join(", ")}</b></p>
-              <p>የአሸናፊ ካርዶች: <b>{winnerCardIds.map((id) => id > 400 ? id - 400 : id).join(", ")}</b></p>
-              <p>የተዘጉ መስመሮች: <b>{winners.map((item) => item.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 ? "ዲያጎናል 1" : row === 12 ? "ዲያጎናል 2" : `አምድ ${row - 5}`).join(", ")).join("; ")}</b></p>
-              <div className="winner-card-preview">
-                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><small>ካርድ #{id > 400 ? id - 400 : id}</small><CardView card={card} selected called={called} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
+              <div className="winner-badge">BINGO!</div>
+              <h2>እንኳን ደስ አለዎት</h2>
+              <div className="winner-details">
+                <p>አሸናፊ: <b>{winners.map((item) => item.displayName).join(", ")}</b></p>
+                <p>የእሸነቱ መጠን: <b>{((game?.prizeAmount ?? 0) / winners.length).toFixed(2)} ብር</b></p>
+                <p>የካርድ ቁጥር: <b>#{winnerCardIds.map((id) => id > 400 ? id - 400 : id).join(", #")}</b></p>
               </div>
+              <div className="winner-card-preview">
+                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><CardView card={card} selected={false} called={called} winningLineIds={winners[index]?.rows} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
+              </div>
+              <button type="button" className="winner-confirm">እሺ!</button>
               <small>አዲስ ጨዋታ በቅርቡ ይጀምራል...</small>
             </div>
           </>

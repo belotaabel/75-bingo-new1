@@ -94,24 +94,37 @@ button:focus-visible { outline: 2px solid #7df4ff; outline-offset: 3px; }
 .ticket-grid span.marked { color: #03122c; background: linear-gradient(#52f1ff, #1268e9); box-shadow: 0 0 13px #1adfff; }
 
 .notice { position: fixed; z-index: 10; bottom: 104px; left: 50%; width: max-content; max-width: calc(100% - 30px); transform: translateX(-50%); padding: 10px 14px; border: 1px solid #65e8ff; border-radius: 12px; background: #0c164ee8; box-shadow: 0 0 20px #1b74d8; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 13px; }
-.confetti { position: fixed; z-index: 90; inset: 0; overflow: hidden; pointer-events: none; }
-.confetti i { position: absolute; top: -12px; width: 7px; height: 18px; background: #ffe55e; animation: confetti-fall 2.8s linear infinite; }
-.winner-modal { position: fixed; z-index: 100; top: 50%; left: 50%; width: min(500px, calc(100% - 32px)); max-height: calc(100svh - 32px); overflow-y: auto; transform: translate(-50%, -50%); padding: 24px 22px 28px; border: 2px solid #438dff; border-radius: 28px; background: linear-gradient(145deg, #111a35, #080b23 72%); box-shadow: 0 0 0 100vmax rgba(1, 3, 20, .82), 0 0 35px #176fff, inset 0 0 24px #182d70; text-align: center; }
-.winner-crown { height: 58px; color: #ffd84a; font-family: Georgia, serif; font-size: 68px; line-height: .9; text-shadow: 0 0 12px #ffb700, 0 4px 0 #ad681c; transform: scaleX(1.15); }
-.winner-badge { color: #f4f8ff; font-size: 38px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 0 14px #4fc9ff, 0 3px 0 #6e78a5; }
-.winner-badge span { font-size: 24px; vertical-align: middle; }
-.winner-modal h2 { margin: 12px 0 14px; color: #e9f3ff; font-family: "Noto Sans Ethiopic", sans-serif; }
-.winner-modal p { margin: 8px 0; font-family: "Noto Sans Ethiopic", sans-serif; }
-.winner-prize { color: #5cefff; font-size: 20px; font-weight: 800; }
-.winner-modal small { display: block; margin-top: 14px; color: #b8c9e4; font-family: "Noto Sans Ethiopic", sans-serif; }
-.winner-card-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
-.winner-card-preview { display: grid; place-items: center; margin-top: 16px; }
-.winner-card-item { width: min(100%, 330px); min-width: 0; padding: 8px; border: 1px solid #397dff; border-radius: 14px; background: #0b1642aa; box-shadow: inset 0 0 12px #152d75; }
-.winner-card-item .ticket-card { width: 100%; margin: 0; border-color: #4fc9ff; box-shadow: 0 0 16px #176fff, inset 0 0 18px #152d75; }
-.winner-card-item .ticket-grid span { min-height: 34px; font-size: 14px; }
-.winner-card-item > small { margin: 0 0 6px; color: #72e9ff; font-weight: 800; }
-.winner-card-item > span { display: block; margin-top: 7px; color: #ffe55e; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 11px; font-weight: 700; }
-@keyframes confetti-fall { to { transform: translateY(110svh) rotate(540deg); } }
+.winner-modal { position: fixed; z-index: 100; top: 50%; left: 50%; width: min(482px, calc(100% - 28px)); max-height: calc(100svh - 28px); overflow-y: auto; transform: translate(-50%, -50%); padding: 0 44px 22px; border: 1px solid #52637b; border-radius: 24px; background: linear-gradient(145deg, #202d42, #172337 72%); box-shadow: 0 0 0 100vmax rgba(1, 3, 20, .82), 0 16px 38px rgba(0, 0, 0, .36), inset 0 1px rgba(255, 255, 255, .06); text-align: center; }
+.winner-badge { margin: 0 -44px; padding: 0 0 4px; color: #ffa300; font-size: clamp(48px, 12vw, 68px); font-weight: 900; letter-spacing: .01em; line-height: 1.18; text-shadow: 0 2px 0 #bd7100; }
+.winner-modal h2 { margin: 17px 0 25px; color: #f0f4fa; font-family: "Noto Sans Ethiopic", sans-serif; font-size: clamp(24px, 6vw, 31px); line-height: 1.2; }
+.winner-details { padding: 15px 16px 12px; border: 1px solid #36475d; border-radius: 15px; background: #2a394d; color: #eef3f8; font-family: "Noto Sans Ethiopic", sans-serif; }
+.winner-modal p { margin: 4px 0; font-size: 15px; line-height: 1.55; }
+.winner-modal p b { color: #f4f7fb; font-weight: 700; }
+.winner-prize { color: #ffa300; font-size: 20px; font-weight: 800; }
+.winner-card-preview { display: grid; place-items: center; margin-top: 15px; }
+.winner-card-item { width: min(100%, 330px); min-width: 0; }
+.winner-card-item .ticket-card { width: 100%; margin: 0; padding: 10px 9px; border-color: #52637b; border-radius: 14px; background: #26364a; box-shadow: 0 8px 16px rgba(4, 12, 24, .24); }
+.winner-card-item .ticket-title { margin-bottom: 8px; color: #f4a313; }
+.winner-card-item .ticket-title b { color: #e6edf5; }
+.winner-card-item .ticket-columns { margin-bottom: 4px; color: #f4a313; }
+.winner-card-item .ticket-grid { gap: 5px; }
+.winner-card-item .ticket-grid span { min-height: 39px; border-radius: 5px; background: #36475d; color: #aebaca; font-size: 15px; }
+.winner-card-item .ticket-grid span.winner-card-cell.marked { background: #16b98b; box-shadow: none; color: #f4fffb; }
+.winner-card-item .ticket-grid span.winner-card-cell.winning-cell { background: linear-gradient(145deg, #ffc52b, #f2a916); box-shadow: 0 0 9px rgba(255, 193, 38, .72); color: #273345; }
+.winner-card-item > span { display: block; margin-top: 7px; color: #dce6f1; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 11px; font-weight: 700; }
+.winner-confirm { width: 100%; margin-top: 19px; padding: 14px 18px; border-radius: 11px; background: #ffa300; box-shadow: inset 0 1px rgba(255, 255, 255, .22); color: #fff; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 18px; font-weight: 800; }
+.winner-confirm:active { transform: translateY(1px); }
+.winner-modal small { display: block; margin-top: 13px; color: #b8c9e4; font-family: "Noto Sans Ethiopic", sans-serif; }
+@media (max-width: 600px) {
+  .winner-modal { width: min(482px, calc(100% - 20px)); padding: 0 18px 16px; border-radius: 22px; }
+  .winner-badge { margin: 0 -18px; font-size: clamp(44px, 14vw, 62px); }
+  .winner-modal h2 { margin: 12px 0 16px; font-size: clamp(22px, 7vw, 28px); }
+  .winner-details { padding: 10px 11px 8px; }
+  .winner-modal p { font-size: 13px; }
+  .winner-card-preview { margin-top: 11px; }
+  .winner-card-item .ticket-grid span { min-height: 34px; font-size: 13px; }
+  .winner-confirm { margin-top: 13px; padding: 12px 16px; }
+}
 .landing-shell { display: flex; position: relative; flex-direction: column; justify-content: center; min-height: 100svh; isolation: isolate; background: radial-gradient(circle at 50% 28%, rgba(41, 179, 255, .28), transparent 32%), linear-gradient(160deg, #081a4b, #070b2a 55%, #020817); }
 .landing-content { position: relative; z-index: 1; text-align: center; }.landing-kicker { color: #8eeeff; font-size: 12px; font-weight: 800; letter-spacing: .28em; }.landing-content h2 { margin: 14px 0 0; color: #f7fbff; font-size: clamp(54px, 16vw, 88px); line-height: .88; letter-spacing: -.07em; text-shadow: 0 0 34px rgba(45, 209, 255, .65); }.landing-content h2 strong { color: transparent; background: linear-gradient(140deg, #fff, #ff57dc 45%, #46d9ff); -webkit-background-clip: text; background-clip: text; }.landing-content h2 em { color: #47d9e8; font-style: normal; }.landing-content p { max-width: 330px; margin: 28px auto 22px; color: #b8c9e4; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 15px; line-height: 1.7; }.landing-highlights { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 9px; color: #eaf6ff; font-size: 11px; font-weight: 700; }.landing-highlights i { width: 4px; height: 4px; border-radius: 50%; background: #47d9e8; box-shadow: 0 0 8px #47d9e8; }.landing-start { width: min(100%, 380px); margin: 56px auto 0; padding: 17px 20px; border-radius: 18px; background: linear-gradient(135deg, #47d9e8, #178cf4); box-shadow: 0 12px 30px rgba(25, 155, 255, .35), inset 0 1px rgba(255,255,255,.5); color: #031333; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 17px; font-weight: 800; }.landing-start b { margin-left: 12px; font-size: 23px; }.landing-note { margin-top: 15px; color: #7e94ba; text-align: center; font-size: 11px; }.landing-glow { position: absolute; z-index: -1; border: 1px solid rgba(71,217,232,.26); border-radius: 50%; box-shadow: 0 0 90px rgba(15, 158, 255, .18), inset 0 0 65px rgba(71,217,232,.08); }.landing-glow-one { top: 12%; left: -80px; width: 220px; height: 220px; }.landing-glow-two { right: -90px; bottom: 11%; width: 250px; height: 250px; border-color: rgba(124,101,255,.25); }
 .start-button { display: block; width: min(100%, 420px); margin: 26px auto 0; padding: 15px 22px; border: 1px solid #70efff; border-radius: 16px; background: linear-gradient(135deg, #13dff5, #5165ff 55%, #c238ef); box-shadow: 0 0 22px rgba(48, 187, 255, .55), inset 0 1px rgba(255,255,255,.65); color: #071130; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 17px; font-weight: 800; }
