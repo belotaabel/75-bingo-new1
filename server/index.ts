@@ -8,16 +8,15 @@ import { handleMe, handleProfilePhoto } from "./routes/me";
 import { handleCardCatalog, handleGameInfo } from "./routes/game";
 import { handleWallet, handleDeposit, handleWithdrawal } from "./routes/wallet";
 
-export type ServiceMode = "90" | "75" | "gateway";
-export const serviceMode: ServiceMode = process.env.SERVICE_MODE === "75" ? "75" : process.env.SERVICE_MODE === "gateway" ? "gateway" : "90";
+export type ServiceMode = "75" | "gateway";
+export const serviceMode: ServiceMode = process.env.SERVICE_MODE === "gateway" ? "gateway" : "75";
 
-const gameServiceUrl = (mode: "90" | "75") => (process.env[`GAME_SERVICE_URL_${mode}`] ?? "").replace(/\/$/, "");
+const gameServiceUrl = () => (process.env.GAME_SERVICE_URL_75 ?? "https://seven5bingoo.onrender.com").replace(/\/$/, "");
 
 async function proxyGameRequest(req: express.Request, res: express.Response) {
-  const requestedMode = req.query.gameType === "75" ? "75" : "90";
   if (serviceMode !== "gateway") return res.status(404).json({ error: "Game endpoint unavailable" });
-  const target = gameServiceUrl(requestedMode);
-  if (!target) return res.status(503).json({ error: `GAME_SERVICE_URL_${requestedMode} is not configured` });
+  const target = gameServiceUrl();
+  if (!target) return res.status(503).json({ error: "GAME_SERVICE_URL_75 is not configured" });
   try {
     const query = new URLSearchParams(req.query as Record<string, string>).toString();
     const response = await fetch(`${target}${req.path}${query ? `?${query}` : ""}`, { headers: { accept: "application/json" } });

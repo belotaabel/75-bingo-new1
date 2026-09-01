@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { getTelegramUser } from "./routes/me";
-import { advanceSelectingGame, callNextNumber, claimGameWinners, getActiveGame, persistSelectedCards, readGameState, startFinalizingGame, type GameType } from "./db";
+import { advanceSelectingGame, callNextNumber, claimGameWinners, getActiveGame, getTelegramProfile, persistSelectedCards, readGameState, startFinalizingGame, type GameType } from "./db";
 import type { BingoWinner } from "@shared/api";
 
 type GameState = {
@@ -9,6 +9,7 @@ type GameState = {
   currentBall: number | null;
   status: "waiting" | "finalizing" | "active" | "complete";
   playerCount: number;
+  cardCount: number;
   prizeAmount: number;
   winners: BingoWinner[];
   selectionEndsAt: string | null;
@@ -21,6 +22,7 @@ function toGameState(row: any): GameState {
     currentBall: row.current_number ?? null,
     status: row.status === "finished" ? "complete" : row.status === "playing" ? "active" : row.status === "finalizing" ? "finalizing" : "waiting",
     playerCount: Number(row.player_count ?? 0),
+    cardCount: Number(row.card_count ?? 0),
     prizeAmount: Number(row.prize_pool ?? 0),
     selectionEndsAt: row.selecting_started_at ? new Date(new Date(row.selecting_started_at).getTime() + 50000).toISOString() : null,
     winners: (row.winners ?? []).map((winner: BingoWinner) => ({
@@ -32,14 +34,11 @@ function toGameState(row: any): GameState {
   };
 }
 
-export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
+export function registerGameSockets(io: Server, serviceMode: GameType = "75") {
   const activeGames = new Map<GameType, string>();
   const tickInProgress = new Set<GameType>();
   const finalizingTimers = new Map<GameType, ReturnType<typeof setTimeout>>();
 
-  // Keep the transport room scoped to both mode and database game. This makes
-  // the shared-round boundary explicit and prevents a relay/service from ever
-  // mixing 90-ball and 75-ball subscribers.
   const roomFor = (gameType: GameType, gameId: string) => `game:${gameType}:${gameId}`;
 
   const broadcastState = async (gameType: GameType) => {
@@ -53,7 +52,7 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
     if (tickInProgress.has(gameType)) return;
     tickInProgress.add(gameType);
     try {
-      const transition = await advanceSelectingGame(gameType);
+      const transition = await advanceSelectingGame();
       if (transition?.started && transition.gameId === activeGames.get(gameType)) {
         await broadcastState(gameType);
         if (transition.finalizing && !finalizingTimers.has(gameType)) {
@@ -61,7 +60,7 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
           const timer = setTimeout(() => {
             finalizingTimers.delete(gameType);
             void (async () => {
-              if (await startFinalizingGame(gameId, gameType)) {
+              if (await startFinalizingGame(gameId)) {
                 io.to(roomFor(gameType, gameId)).emit("game:announcement", { message: "Game started" });
                 await broadcastState(gameType);
                 await advanceMode(gameType);
@@ -76,9 +75,9 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
       if (!gameId) return;
       const activeState = await readGameState(gameId);
       if (activeState?.status !== "playing") return;
-      const nextNumber = await callNextNumber(gameId, gameType);
+      const nextNumber = await callNextNumber(gameId);
       if (nextNumber !== null) {
-        await claimGameWinners(gameId, gameType);
+        await claimGameWinners(gameId);
         await broadcastState(gameType);
         const finalized = await readGameState(gameId);
         if (finalized?.status === "finished") activeGames.delete(gameType);
@@ -107,7 +106,9 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
     socket.on("game:join", async ({ playerId, cardNumbers }: { playerId?: string | number; cardNumbers?: number[] }) => {
       try {
         const parsedPlayerId = Number(playerId);
-        if (!Number.isSafeInteger(parsedPlayerId) || parsedPlayerId <= 0 || parsedPlayerId !== socket.data.telegramId) {
+        const profile = await getTelegramProfile(socket.data.telegramId);
+        const authenticatedPlayerId = profile ? Number(profile.id) : null;
+        if (!profile || !Number.isSafeInteger(parsedPlayerId) || parsedPlayerId <= 0 || parsedPlayerId !== authenticatedPlayerId) {
           socket.emit("game:error", { message: "Telegram player verification failed." });
           return;
         }
@@ -122,16 +123,16 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
         // Lookup and persistence are transactional in the database. Passing the
         // user here also keeps the occupied-card view tied to this same shared
         // round before cards are locked/purchased.
-        const game = await getActiveGame(mode, parsedPlayerId);
+        const game = await getActiveGame(parsedPlayerId);
         const gameId = String(game.id);
         activeGames.set(mode, gameId);
-        await persistSelectedCards(gameId, parsedPlayerId, cards, mode);
+        await persistSelectedCards(gameId, parsedPlayerId, cards);
         const room = roomFor(mode, gameId);
         await socket.join(room);
         socket.data.gameId = gameId;
         socket.data.gameType = mode;
         socket.data.playerId = parsedPlayerId;
-        const updatedGame = await getActiveGame(mode);
+        const updatedGame = await getActiveGame();
         io.to(room).emit("cards:occupied", updatedGame.occupiedCardNumbers);
         await broadcastState(mode);
       } catch (error) {
@@ -149,10 +150,10 @@ export function registerGameSockets(io: Server, serviceMode: GameType = "90") {
         const room = roomFor(gameType, gameId);
         void (async () => {
           if (playerId) {
-            const game = await getActiveGame(gameType, playerId);
+            const game = await getActiveGame(playerId);
             if (String(game.id) === gameId && game.status === "selecting") {
-              await persistSelectedCards(gameId, playerId, [], gameType);
-              const updatedGame = await getActiveGame(gameType);
+              await persistSelectedCards(gameId, playerId, []);
+              const updatedGame = await getActiveGame();
               io.to(room).emit("cards:occupied", updatedGame.occupiedCardNumbers);
             }
           }

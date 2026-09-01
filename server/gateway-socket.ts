@@ -1,25 +1,19 @@
 import type { Server } from "socket.io";
 import { io as connectToGame } from "socket.io-client";
 
-type Mode = "90" | "75";
-
 export function registerGatewaySockets(io: Server) {
   io.on("connection", (socket) => {
-    const mode: Mode = socket.handshake.query.gameType === "75" ? "75" : "90";
-    const target = (process.env[`GAME_SERVICE_URL_${mode}`] ?? "").replace(/\/$/, "");
+    const target = (process.env.GAME_SERVICE_URL_75 ?? "https://seven5bingoo.onrender.com").replace(/\/$/, "");
     if (!target) {
-      socket.emit("game:error", { message: `GAME_SERVICE_URL_${mode} is not configured` });
+      socket.emit("game:error", { message: "GAME_SERVICE_URL_75 is not configured" });
       socket.disconnect(true);
       return;
     }
 
-    // Carry the selected mode through the second Socket.IO hop as well. The
-    // upstream is normally a mode-specific service, but this keeps mode
-    // selection explicit if the deployment topology changes.
     const upstream = connectToGame(target, {
       transports: ["polling", "websocket"],
       upgrade: false,
-      query: { gameType: mode },
+      query: { gameType: "75" },
       auth: { initData: socket.handshake.auth?.initData },
     });
     upstream.on("game:state", (state) => socket.emit("game:state", state));

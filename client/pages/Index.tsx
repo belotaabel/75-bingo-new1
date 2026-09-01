@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   ArrowLeft,
   Bell,
+  Gamepad2,
   Home,
   MoreVertical,
   Star,
@@ -9,7 +11,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { io } from "socket.io-client";
-import type { BingoWinner } from "@shared/api";
+import type { BingoWinner, WalletResponse } from "@shared/api";
 
 type Cell = number | null;
 type Card = { card_number: number; rows: Cell[][] };
@@ -19,18 +21,32 @@ type User = {
   username: string | null;
   display_name: string;
   balance: number | string;
+  player_balance: number | string;
+  main_balance: number | string;
 };
-type GameType = "90" | "75";
+type GameType = "75";
 type GameState = {
   calledNumbers: number[];
   currentBall: number | null;
   playerCount: number;
+  cardCount: number;
   prizeAmount: number;
   status: string;
   winners: BingoWinner[];
   selectionEndsAt: string | null;
   gameId: string;
 };
+type WalletForm = { amount: string; reference: string; account: string; owner: string };
+
+const isWinningCell = (lineId: number, rowIndex: number, columnIndex: number) => {
+  if (lineId >= 1 && lineId <= 5) return rowIndex === lineId - 1;
+  if (lineId >= 6 && lineId <= 10) return columnIndex === lineId - 6;
+  if (lineId === 11) return rowIndex === columnIndex;
+  if (lineId === 12) return rowIndex + columnIndex === 4;
+  if (lineId === 13) return (rowIndex === 0 || rowIndex === 4) && (columnIndex === 0 || columnIndex === 4);
+  return false;
+};
+
 declare global {
   interface Window {
     Telegram?: { WebApp?: { initData?: string; ready?: () => void } };
@@ -42,12 +58,14 @@ function CardView({
   selected,
   called,
   onClick,
-  gameType = "90",
+  winningLineIds,
+  gameType = "75",
 }: {
   card: Card;
   selected: boolean;
   called: Set<number>;
   onClick: () => void;
+  winningLineIds?: number[];
   gameType?: GameType;
 }) {
   return (
@@ -74,7 +92,11 @@ function CardView({
           row.map((number, columnIndex) => (
             <span
               key={`${rowIndex}-${columnIndex}`}
-              className={number === 0 || (number !== null && called.has(number)) ? "marked" : ""}
+              className={[
+                number === 0 || (number !== null && called.has(number)) ? "marked" : "",
+                winningLineIds?.some((lineId) => isWinningCell(lineId, rowIndex, columnIndex)) ? "winning-cell" : "",
+                winningLineIds ? "winner-card-cell" : "",
+              ].filter(Boolean).join(" ")}
             >
               {number === 0 ? "FREE" : number}
             </span>
@@ -86,7 +108,118 @@ function CardView({
   );
 }
 
-export default function Index({ gameType }: { gameType: GameType }) {
+function WalletPanel({
+  panel,
+  user,
+  wallet,
+  apiBase,
+  initData,
+  walletForm,
+  setWalletForm,
+  walletBusy,
+  setWalletBusy,
+  loadWallet,
+  onClose,
+  onNotice,
+}: {
+  panel: "profile" | "wallet";
+  user: User | null;
+  wallet: WalletResponse | null;
+  apiBase: string;
+  initData: string;
+  walletForm: WalletForm;
+  setWalletForm: Dispatch<SetStateAction<WalletForm>>;
+  walletBusy: boolean;
+  setWalletBusy: (busy: boolean) => void;
+  loadWallet: () => Promise<void>;
+  onClose: () => void;
+  onNotice: (message: string) => void;
+}) {
+  const submitDeposit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setWalletBusy(true);
+    try {
+      const response = await fetch(`${apiBase}/api/wallet/deposit`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
+        body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }),
+      });
+      const data = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) throw new Error(data.error || "Deposit failed");
+      setWalletForm((form) => ({ ...form, amount: "", reference: "" }));
+      await loadWallet();
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Deposit failed");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  const submitWithdrawal = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setWalletBusy(true);
+    try {
+      const response = await fetch(`${apiBase}/api/wallet/withdraw`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
+        body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }),
+      });
+      const data = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) throw new Error(data.error || "Withdrawal failed");
+      setWalletForm((form) => ({ ...form, amount: "", account: "", owner: "" }));
+      await loadWallet();
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Withdrawal failed");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  return (
+    <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}>
+      <button className="icon-button" onClick={onClose} aria-label="Close"><ArrowLeft /></button>
+      <h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>
+      {panel === "profile" ? (
+        <>
+          <p>{user?.display_name || "Telegram player"}</p>
+          <div className="wallet-balances">
+            <p><span>Player Balance</span><strong>{user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p>
+            <p><span>Main Balance</span><strong>{user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="wallet-balances">
+            <p><span>Player Balance</span><strong>{wallet?.profile.player_balance ?? user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p>
+            <p><span>Main Balance</span><strong>{wallet?.profile.main_balance ?? user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p>
+          </div>
+          <form onSubmit={submitDeposit}>
+            <h3>Deposit request</h3>
+            <p className="deposit-receiver">TeleBirr receiving number: <strong>{wallet?.depositReceiver ?? "Not configured"}</strong></p>
+            <p className="wallet-hint">First deposit bonus: 65% · Second and later: 20%</p>
+            <input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(event) => setWalletForm({ ...walletForm, amount: event.target.value })} />
+            <input required placeholder="Payment reference" value={walletForm.reference} onChange={(event) => setWalletForm({ ...walletForm, reference: event.target.value })} />
+            <button disabled={walletBusy}>Submit deposit</button>
+          </form>
+          <form onSubmit={submitWithdrawal}>
+            <h3>Withdraw from Main Balance</h3>
+            <input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(event) => setWalletForm({ ...walletForm, amount: event.target.value })} />
+            <input required placeholder="Account" value={walletForm.account} onChange={(event) => setWalletForm({ ...walletForm, account: event.target.value })} />
+            <input required placeholder="Account owner" value={walletForm.owner} onChange={(event) => setWalletForm({ ...walletForm, owner: event.target.value })} />
+            <button disabled={walletBusy}>Submit withdrawal</button>
+          </form>
+          <h3 className="wallet-history-title">Recent transactions</h3>
+          {wallet?.transactions.map((transaction) => (
+            <p className="wallet-transaction" key={transaction.id}><b>{["deposit", "deposit_bonus", "invite_bonus", "bingo_prize"].includes(transaction.type) ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>
+          ))}
+        </>
+      )}
+    </aside>
+  );
+}
+
+export default function Index() {
+  const gameType: GameType = "75";
   const [screen, setScreen] = useState<"landing" | "selection">("landing");
   // The gateway selects the configured game service from the gameType query parameter.
   // Empty bases preserve the local same-origin development fallback.
@@ -113,6 +246,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
   const [called, setCalled] = useState<Set<number>>(new Set());
   const [currentBall, setCurrentBall] = useState<number | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
+  const [currentCardCount, setCurrentCardCount] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [selectionEndsAt, setSelectionEndsAt] = useState<string | null>(null);
   const [selectionGameStatus, setSelectionGameStatus] = useState<string | null>(null);
@@ -123,7 +257,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
   const [finalizing, setFinalizing] = useState(false);
   const [notice, setNotice] = useState("ካርዶች እየተጫኑ ነው...");
   const [panel, setPanel] = useState<"profile" | "wallet" | null>(null);
-  const [wallet, setWallet] = useState<{ profile: User; transactions: Array<{ id: number; type: string; amount: string | number; status: string; external_reference?: string; created_at: string }> } | null>(null);
+  const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [walletForm, setWalletForm] = useState({ amount: "", reference: "", account: "", owner: "" });
   const [walletBusy, setWalletBusy] = useState(false);
   const loadWallet = async () => {
@@ -174,7 +308,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
   useEffect(() => { if (panel === "wallet") loadWallet().catch((error) => setNotice(error.message)); }, [panel]);
   useEffect(() => {
     const url = `${apiBase}/api/game?gameType=${gameType}${user ? `&userId=${user.id}` : ""}`;
-    const applyGameInfo = (activeGame: { id?: string | number; status?: string; selectionEndsAt?: string | null; occupiedCardNumbers?: unknown } | null) => {
+    const applyGameInfo = (activeGame: { id?: string | number; status?: string; selectionEndsAt?: string | null; occupiedCardNumbers?: unknown; cardCount?: number } | null) => {
       if (!activeGame) return;
       if (activeGame.id !== undefined) {
         const nextGameId = String(activeGame.id);
@@ -186,6 +320,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
         setGameId(nextGameId);
       }
       setSelectionGameStatus(activeGame.status ?? null);
+      setCurrentCardCount(activeGame.cardCount ?? 0);
       if (activeGame.selectionEndsAt) {
         setSelectionEndsAt(activeGame.selectionEndsAt);
       } else {
@@ -251,6 +386,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
     socket.on("game:announcement", ({ message }: { message?: string }) => setNotice(message || "Game started"));
     socket.on("game:state", (state: GameState) => {
       setGame(state);
+      setCurrentCardCount(state.cardCount);
       setFinalizing(state.status === "finalizing");
       // Keep the completed round mounted so its winner payload can be shown
       // before the next-round reset runs. Previously `complete` immediately
@@ -270,7 +406,11 @@ export default function Index({ gameType }: { gameType: GameType }) {
   );
   const cardForId = (id: number) => {
     const visibleId = gameType === "75" && id > 400 ? id - 400 : id;
-    return cards.find((card) => card.card_number === visibleId);
+    const card = cards.find((candidate) => {
+      const cardNumber = Number(candidate.card_number);
+      return cardNumber === visibleId || (gameType === "75" && cardNumber === visibleId + 400);
+    });
+    return card ? { ...card, card_number: visibleId } : undefined;
   };
   const selectionLocked = selectionGameStatus === "playing";
   const toggle = (id: number) => {
@@ -296,8 +436,6 @@ export default function Index({ gameType }: { gameType: GameType }) {
     const rows = card.rows
       .map((row, index) => (complete(row) ? index + 1 : null))
       .filter((line): line is number => line !== null);
-    if (gameType === "90") return rows;
-
     const columns = card.rows[0]
       ?.map((_, columnIndex) =>
         complete(card.rows.map((row) => row[columnIndex])) ? columnIndex + 6 : null,
@@ -346,7 +484,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
             <br />
             <em>BINGO</em>
           </h2>
-          <p>{gameType === "90" ? "የ90" : "የ75"} ቢንጎ ጨዋታን ይጫወቱ።</p>
+          <p>የ75 ቢንጎ ጨዋታን ይጫወቱ።</p>
           <div className="landing-highlights">
             <span>400 ካርዶች</span>
             <i /> <span>እስከ 2 ካርዶች</span>
@@ -393,8 +531,8 @@ export default function Index({ gameType }: { gameType: GameType }) {
           <div className="stat purple">
             <Users />
             <span>
-              <small>ተጫዋቾች</small>
-              <b>{game?.playerCount ?? 0}/200</b>
+              <small>የአሁኑ ጨዋታ ካርዶች</small>
+            <b>{game?.cardCount ?? currentCardCount}</b>
             </span>
           </div>
           <div className="stat blue">
@@ -408,16 +546,16 @@ export default function Index({ gameType }: { gameType: GameType }) {
             <Star />
             <span>
               <small>የተጠሩ</small>
-              <b>{called.size}/{gameType === "75" ? 75 : 90}</b>
+              <b>{called.size}/75</b>
             </span>
           </div>
         </section>
         <section className="draw">
           <p>የአሁኑ ቁጥር</p>
           <div className="current-ball-layout">
-            <strong className="ball-letter">{currentBall === null ? "—" : gameType === "75" ? (currentBall <= 15 ? "B" : currentBall <= 30 ? "I" : currentBall <= 45 ? "N" : currentBall <= 60 ? "G" : "O") : ""}</strong>
+            <strong className="ball-letter">{currentBall === null ? "—" : currentBall <= 15 ? "B" : currentBall <= 30 ? "I" : currentBall <= 45 ? "N" : currentBall <= 60 ? "G" : "O"}</strong>
             <div className="orb">{currentBall ?? "—"}</div>
-            <span className="called-count">{called.size}/{gameType === "75" ? 75 : 90}</span>
+            <span className="called-count">{called.size}/75</span>
           </div>
         </section>
         <section className="ball-history" aria-label="Called ball history">
@@ -448,27 +586,23 @@ export default function Index({ gameType }: { gameType: GameType }) {
         </section>
         {winner && (
           <>
-            <div className="confetti" aria-label="Winner celebration">
-              {Array.from({ length: 28 }, (_, index) => (
-                <i key={index} style={{ left: `${(index * 37) % 100}%`, animationDelay: `${-(index % 9) / 3}s` }} />
-              ))}
-            </div>
             <div className="winner-modal" role="status">
-              <div className="winner-crown" aria-hidden="true">♛</div>
-              <div className="winner-badge"><span>🎉</span> BINGO! <span>🎉</span></div>
-              <h2>{winners.length > 1 ? "አሸናፊዎች ተገኝተዋል" : "አሸናፊ ተገኝቷል"}</h2>
-              <div className="winner-prize">{((game?.prizeAmount ?? 0) / winners.length).toFixed(2)} ብር / እያናቸው</div>
-              <p>የአሸናፊው ስም: <b>{winners.map((item) => item.displayName).join(", ")}</b></p>
-              <p>የአሸናፊ ካርዶች: <b>{winnerCardIds.map((id) => gameType === "75" ? (id > 400 ? id - 400 : id) : id).join(", ")}</b></p>
-              <p>የተዘጉ መስመሮች: <b>{winners.map((item) => item.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 ? "ዲያጎናል 1" : row === 12 ? "ዲያጎናል 2" : `አምድ ${row - 5}`).join(", ")).join("; ")}</b></p>
-              <div className="winner-card-preview">
-                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><small>ካርድ #{gameType === "75" && id > 400 ? id - 400 : id}</small><CardView card={card} selected called={called} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
+              <div className="winner-badge">BINGO!</div>
+              <h2>እንኳን ደስ አለዎት</h2>
+              <div className="winner-details">
+                <p>አሸናፊ: <b>{winners.map((item) => item.displayName).join(", ")}</b></p>
+                <p>የእሸነቱ መጠን: <b>{((game?.prizeAmount ?? 0) / winners.length).toFixed(2)} ብር</b></p>
+                <p>የካርድ ቁጥር: <b>#{winnerCardIds.map((id) => id > 400 ? id - 400 : id).join(", #")}</b></p>
               </div>
+              <div className="winner-card-preview">
+                {winnerCardIds.slice(0, 1).map((id, index) => { const card = cardForId(id); return card && <div className="winner-card-item" key={id}><CardView card={card} selected={false} called={called} winningLineIds={winners[index]?.rows} onClick={() => undefined} gameType={gameType} /><span>የዘጋው: {winners[index]?.rows.map((row) => row <= 5 ? `መስመር ${row}` : row === 13 ? "አራት ማዕዘኖች" : row === 11 || row === 12 ? "ዲያጎናል" : `አምድ ${row - 5}`).join(", ")}</span></div>; })}
+              </div>
+              <button type="button" className="winner-confirm">እሺ!</button>
               <small>አዲስ ጨዋታ በቅርቡ ይጀምራል...</small>
             </div>
           </>
         )}
-        {panel && <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}><button className="icon-button" onClick={() => setPanel(null)} aria-label="Close"><ArrowLeft /></button><h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>{panel === "profile" ? <p>{user?.display_name || "Telegram player"}</p> : <><p>ቀሪ ሂሳብ: <strong>{wallet?.profile.balance ?? user?.balance ?? 0} ብር</strong></p><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/deposit`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }) }); if (!response.ok) throw new Error((await response.json()).error || "Deposit failed"); setWalletForm({ ...walletForm, amount: "", reference: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Deposit failed"); } finally { setWalletBusy(false); } }}><h3>Deposit request</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Payment reference" value={walletForm.reference} onChange={(e) => setWalletForm({ ...walletForm, reference: e.target.value })} /><button disabled={walletBusy}>Submit deposit</button></form><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/withdraw`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }) }); if (!response.ok) throw new Error((await response.json()).error || "Withdrawal failed"); setWalletForm({ ...walletForm, amount: "", account: "", owner: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Withdrawal failed"); } finally { setWalletBusy(false); } }}><h3>Withdraw</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Account" value={walletForm.account} onChange={(e) => setWalletForm({ ...walletForm, account: e.target.value })} /><input required placeholder="Account owner" value={walletForm.owner} onChange={(e) => setWalletForm({ ...walletForm, owner: e.target.value })} /><button disabled={walletBusy}>Submit withdrawal</button></form><h3>Recent transactions</h3>{wallet?.transactions.map((transaction) => <p key={transaction.id}><b>{transaction.type === "deposit" ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>)}</>}</aside>}
+        {panel && <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}><button className="icon-button" onClick={() => setPanel(null)} aria-label="Close"><ArrowLeft /></button><h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>{panel === "profile" ? <p>{user?.display_name || "Telegram player"}</p> : <><div className="wallet-balances"><p><span>Player Balance</span><strong>{wallet?.profile.player_balance ?? user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p><p><span>Main Balance</span><strong>{wallet?.profile.main_balance ?? user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p></div><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/deposit`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }) }); if (!response.ok) throw new Error((await response.json()).error || "Deposit failed"); setWalletForm({ ...walletForm, amount: "", reference: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Deposit failed"); } finally { setWalletBusy(false); } }}><h3>Deposit request</h3><p className="wallet-hint">First deposit bonus: 65% · Second and later: 20%</p><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Payment reference" value={walletForm.reference} onChange={(e) => setWalletForm({ ...walletForm, reference: e.target.value })} /><button disabled={walletBusy}>Submit deposit</button></form><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/withdraw`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }) }); if (!response.ok) throw new Error((await response.json()).error || "Withdrawal failed"); setWalletForm({ ...walletForm, amount: "", account: "", owner: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Withdrawal failed"); } finally { setWalletBusy(false); } }}><h3>Withdraw from Main Balance</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Account" value={walletForm.account} onChange={(e) => setWalletForm({ ...walletForm, account: e.target.value })} /><input required placeholder="Account owner" value={walletForm.owner} onChange={(e) => setWalletForm({ ...walletForm, owner: e.target.value })} /><button disabled={walletBusy}>Submit withdrawal</button></form><h3>Recent transactions</h3>{wallet?.transactions.map((transaction) => <p key={transaction.id}><b>{["deposit", "deposit_bonus", "invite_bonus", "bingo_prize"].includes(transaction.type) ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>)}</>}</aside>}
       </main>
     );
   return (
@@ -500,15 +634,15 @@ export default function Index({ gameType }: { gameType: GameType }) {
         <div className="stat purple">
           <Users />
           <span>
-            <small>ተጫዋቾች</small>
-            <b>{game?.playerCount ?? 0}/200</b>
+            <small>የአሁኑ ጨዋታ ካርዶች</small>
+            <b>{game?.cardCount ?? currentCardCount}</b>
           </span>
         </div>
         <div className="stat blue">
           <Wallet />
           <span>
-            <small>ቀሪ ሂሳብ</small>
-            <b>{user?.balance ?? 0} ብር</b>
+            <small>Player Balance</small>
+            <b>{user?.player_balance ?? 0} ብር</b>
           </span>
         </div>
         <div className="stat gold">
@@ -520,6 +654,7 @@ export default function Index({ gameType }: { gameType: GameType }) {
         </div>
       </section>
       <div className="game-id selection-game-id">Game ID: {game?.gameId ?? gameId ?? "—"}</div>
+      <p className="purchase-note">Card fee: Player Balance first, then Main Balance</p>
       <div className="selection-countdown" aria-live="polite">
         <span>{selectionLocked ? "ጨዋታ እየተካሄደ ነው" : "ጨዋታው ይጀምራል"}</span>
         <b>{selectionLocked ? "00" : countdown ?? 50}</b>
@@ -564,6 +699,22 @@ export default function Index({ gameType }: { gameType: GameType }) {
           })}
         </div>
       </section>
+      {panel && (
+        <WalletPanel
+          panel={panel}
+          user={user}
+          wallet={wallet}
+          apiBase={apiBase}
+          initData={initData}
+          walletForm={walletForm}
+          setWalletForm={setWalletForm}
+          walletBusy={walletBusy}
+          setWalletBusy={setWalletBusy}
+          loadWallet={loadWallet}
+          onClose={() => setPanel(null)}
+          onNotice={setNotice}
+        />
+      )}
       {notice && (
         <div className="notice" role="status">
           {notice}
@@ -577,9 +728,33 @@ export default function Index({ gameType }: { gameType: GameType }) {
         {countdown !== null ? `ይጀምራል ${countdown}` : "ጨዋታ ጀምር"}
       </button>
       <nav className="bottom-nav">
-        <button onClick={() => { setScreen("landing"); setCountdown(null); setSelected([]); setNotice(""); }}>
+        <button className="lobby" onClick={() => { setScreen("landing"); setCountdown(null); setSelected([]); setNotice(""); }}>
           <Home />
           <span>Lobby</span>
+        </button>
+        <button
+          className="game-tab"
+          onClick={() => {
+            setScreen("selection");
+            setPanel(null);
+            setNotice("");
+            if (selectionGameStatus === "playing") {
+              setFinalizing(false);
+              setCountdown(null);
+              setPlaying(true);
+            } else if (selectionGameStatus === "finalizing") {
+              setPlaying(false);
+              setFinalizing(true);
+              setCountdown(null);
+            } else {
+              setPlaying(false);
+              setFinalizing(false);
+            }
+          }}
+          aria-current="page"
+        >
+          <Gamepad2 />
+          <span>Game</span>
         </button>
         <button onClick={() => setPanel("wallet")}>
           <Wallet />

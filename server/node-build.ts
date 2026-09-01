@@ -11,7 +11,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
 
 const app = createServer();
-const port = Number(process.env.PORT ?? (serviceMode === "75" ? 3001 : serviceMode === "gateway" ? 8080 : 3000));
+const port = Number(process.env.PORT ?? (serviceMode === "gateway" ? 8080 : 3001));
 
 // In production, serve the built SPA files
 const __dirname = import.meta.dirname;
@@ -57,7 +57,7 @@ httpServer.listen(port, () => {
   void initializeDatabase().catch((error) => {
     console.error("Neon database initialization failed", error instanceof Error ? { message: error.message, stack: error.stack, code: (error as { code?: string }).code } : error);
   });
-  if (process.env.TELEGRAM_WEBHOOK_ENABLED !== "false" && (serviceMode === "90" || serviceMode === "gateway")) void registerTelegramWebhook().catch((error) => {
+  if (process.env.TELEGRAM_WEBHOOK_ENABLED !== "false") void registerTelegramWebhook().catch((error) => {
     console.error("Telegram webhook registration failed", error instanceof Error ? { message: error.message, stack: error.stack } : error);
   });
   const runningOnRender = process.env.RENDER === "true" || Boolean(process.env.RENDER_EXTERNAL_URL);
