@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -34,6 +35,7 @@ type GameState = {
   selectionEndsAt: string | null;
   gameId: string;
 };
+type WalletForm = { amount: string; reference: string; account: string; owner: string };
 
 const isWinningCell = (lineId: number, rowIndex: number, columnIndex: number) => {
   if (lineId >= 1 && lineId <= 5) return rowIndex === lineId - 1;
@@ -102,6 +104,115 @@ function CardView({
       </div>
       {selected && <small>✓ የተመረጠ</small>}
     </article>
+  );
+}
+
+function WalletPanel({
+  panel,
+  user,
+  wallet,
+  apiBase,
+  initData,
+  walletForm,
+  setWalletForm,
+  walletBusy,
+  setWalletBusy,
+  loadWallet,
+  onClose,
+  onNotice,
+}: {
+  panel: "profile" | "wallet";
+  user: User | null;
+  wallet: WalletResponse | null;
+  apiBase: string;
+  initData: string;
+  walletForm: WalletForm;
+  setWalletForm: Dispatch<SetStateAction<WalletForm>>;
+  walletBusy: boolean;
+  setWalletBusy: (busy: boolean) => void;
+  loadWallet: () => Promise<void>;
+  onClose: () => void;
+  onNotice: (message: string) => void;
+}) {
+  const submitDeposit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setWalletBusy(true);
+    try {
+      const response = await fetch(`${apiBase}/api/wallet/deposit`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
+        body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }),
+      });
+      const data = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) throw new Error(data.error || "Deposit failed");
+      setWalletForm((form) => ({ ...form, amount: "", reference: "" }));
+      await loadWallet();
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Deposit failed");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  const submitWithdrawal = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setWalletBusy(true);
+    try {
+      const response = await fetch(`${apiBase}/api/wallet/withdraw`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
+        body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }),
+      });
+      const data = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) throw new Error(data.error || "Withdrawal failed");
+      setWalletForm((form) => ({ ...form, amount: "", account: "", owner: "" }));
+      await loadWallet();
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Withdrawal failed");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  return (
+    <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}>
+      <button className="icon-button" onClick={onClose} aria-label="Close"><ArrowLeft /></button>
+      <h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>
+      {panel === "profile" ? (
+        <>
+          <p>{user?.display_name || "Telegram player"}</p>
+          <div className="wallet-balances">
+            <p><span>Player Balance</span><strong>{user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p>
+            <p><span>Main Balance</span><strong>{user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="wallet-balances">
+            <p><span>Player Balance</span><strong>{wallet?.profile.player_balance ?? user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p>
+            <p><span>Main Balance</span><strong>{wallet?.profile.main_balance ?? user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p>
+          </div>
+          <form onSubmit={submitDeposit}>
+            <h3>Deposit request</h3>
+            <p className="wallet-hint">First deposit bonus: 65% · Second and later: 20%</p>
+            <input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(event) => setWalletForm({ ...walletForm, amount: event.target.value })} />
+            <input required placeholder="Payment reference" value={walletForm.reference} onChange={(event) => setWalletForm({ ...walletForm, reference: event.target.value })} />
+            <button disabled={walletBusy}>Submit deposit</button>
+          </form>
+          <form onSubmit={submitWithdrawal}>
+            <h3>Withdraw from Main Balance</h3>
+            <input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(event) => setWalletForm({ ...walletForm, amount: event.target.value })} />
+            <input required placeholder="Account" value={walletForm.account} onChange={(event) => setWalletForm({ ...walletForm, account: event.target.value })} />
+            <input required placeholder="Account owner" value={walletForm.owner} onChange={(event) => setWalletForm({ ...walletForm, owner: event.target.value })} />
+            <button disabled={walletBusy}>Submit withdrawal</button>
+          </form>
+          <h3 className="wallet-history-title">Recent transactions</h3>
+          {wallet?.transactions.map((transaction) => (
+            <p className="wallet-transaction" key={transaction.id}><b>{["deposit", "deposit_bonus", "invite_bonus", "bingo_prize"].includes(transaction.type) ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>
+          ))}
+        </>
+      )}
+    </aside>
   );
 }
 
@@ -583,6 +694,22 @@ export default function Index() {
           })}
         </div>
       </section>
+      {panel && (
+        <WalletPanel
+          panel={panel}
+          user={user}
+          wallet={wallet}
+          apiBase={apiBase}
+          initData={initData}
+          walletForm={walletForm}
+          setWalletForm={setWalletForm}
+          walletBusy={walletBusy}
+          setWalletBusy={setWalletBusy}
+          loadWallet={loadWallet}
+          onClose={() => setPanel(null)}
+          onNotice={setNotice}
+        />
+      )}
       {notice && (
         <div className="notice" role="status">
           {notice}

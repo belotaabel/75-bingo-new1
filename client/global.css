@@ -166,6 +166,9 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible { outli
 .account-panel p strong { color: var(--gold-bright); }
 .account-panel form { display: grid; gap: 10px; margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: rgba(16, 41, 29, .8); }
 .account-panel h3 { margin: 0; color: #eff8e9; font-family: "Noto Sans Ethiopic", sans-serif; font-size: 15px; }
+.wallet-history-title { margin-top: 22px !important; }
+.wallet-transaction { margin: 7px 0 !important; padding-bottom: 7px; border-bottom: 1px solid rgba(76, 152, 100, .28); font-size: 12px; }
+.wallet-transaction b { color: var(--gold-bright); }
 .account-panel input { width: 100%; padding: 10px 11px; border: 1px solid #3d7650; border-radius: 9px; background: #0a2114; color: #eff8e9; }
 .account-panel form button { padding: 10px; border-radius: 9px; background: var(--gold); color: #38250b; font-weight: 800; }
 .account-panel form button:disabled { opacity: .6; cursor: wait; }
