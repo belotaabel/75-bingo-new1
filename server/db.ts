@@ -481,11 +481,12 @@ export async function getActiveGame(userId?: number) {
       const cardNumber = Number(row.card_number);
       return cardNumber - 400;
     });
+    const cardCountResult = await client.query("SELECT COUNT(*)::int AS count FROM game_cards WHERE game_id = $1", [game.id]);
     await client.query("COMMIT");
     const selectionEndsAt = game.selecting_started_at
       ? new Date(new Date(game.selecting_started_at).getTime() + 50000).toISOString()
       : null;
-    return { ...game, selectionEndsAt, occupiedCardNumbers };
+    return { ...game, selectionEndsAt, occupiedCardNumbers, cardCount: Number(cardCountResult.rows[0]?.count ?? 0) };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -646,7 +647,8 @@ export async function readGameState(gameId: string) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const result = await db.query(
     `SELECT g.id, g.status, g.prize_pool, g.called_numbers, g.current_number, g.selecting_started_at,
-            COUNT(DISTINCT gc.user_id)::int AS player_count
+            COUNT(DISTINCT gc.user_id)::int AS player_count,
+            COUNT(gc.card_number)::int AS card_count
      FROM games g
      LEFT JOIN game_cards gc ON gc.game_id = g.id
      WHERE g.id = $1

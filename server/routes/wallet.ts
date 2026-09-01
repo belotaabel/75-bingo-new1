@@ -15,7 +15,11 @@ export const handleWallet: RequestHandler = async (req, res) => {
   try {
     const profile = await getTelegramProfile(telegramId);
     if (!profile) return res.sendStatus(404);
-    return res.json({ profile, transactions: await getWalletTransactions(telegramId) });
+    return res.json({
+      profile,
+      transactions: await getWalletTransactions(telegramId),
+      depositReceiver: process.env.TELEBIRR_DEPOSIT_NUMBER ?? null,
+    });
   } catch (error) { console.error("Wallet load failed", error); return res.status(500).json({ error: "Wallet unavailable" }); }
 };
 

@@ -48,4 +48,5 @@ export interface WalletTransaction {
 export interface WalletResponse {
   profile: WalletProfile;
   transactions: WalletTransaction[];
+  depositReceiver: string | null;
 }

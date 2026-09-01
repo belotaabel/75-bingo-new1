@@ -180,6 +180,8 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible { outli
 .wallet-balances strong { color: var(--gold-bright); font-size: 20px; }
 .wallet-balances small, .wallet-hint { color: var(--muted); font-family: "Noto Sans Ethiopic", sans-serif; font-size: 11px; }
 .wallet-hint { margin: 0; }
+.deposit-receiver { margin: 0 !important; padding: 9px 10px; border: 1px solid var(--gold-deep); border-radius: 9px; background: rgba(92, 31, 47, .5); color: var(--muted); font-family: Inter, "Noto Sans Ethiopic", sans-serif !important; font-size: 12px; }
+.deposit-receiver strong { display: block; margin-top: 3px; color: var(--gold-bright); font-size: 17px; letter-spacing: .04em; }
 .bottom-nav { position: fixed; z-index: 5; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; gap: min(7vw, 54px); min-height: 100px; padding: 13px 24px 20px; background: rgba(5, 19, 12, .96); box-shadow: 0 -10px 30px rgba(111, 28, 49, .48); }
 .bottom-nav button { display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 145px; height: 59px; border: 1px solid var(--border); border-radius: 30px; background: #351520; box-shadow: 0 0 12px rgba(143, 38, 65, .25); color: var(--muted); font-size: 19px; }
 .bottom-nav .lobby { border-color: #ad6272; color: #f2dce1; }

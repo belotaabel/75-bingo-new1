@@ -140,8 +140,9 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
       await sendTelegramMessage(token, chatId, { text: responses[text], reply_markup: contactRequestMenu() });
     } else if (text === "💰 Deposit" && message.from?.id) {
       depositSteps.set(message.from.id, { step: "amount" });
+      const depositNumber = process.env.TELEBIRR_DEPOSIT_NUMBER;
       await sendTelegramMessage(token, chatId, {
-        text: "🏦 ባንክ: TeleBirr\n\n⚠️ ከ TeleBirr ወደ TeleBirr ብቻ ያስገቡ።\n\nእባክዎ ብሩን ወደዚህ አካውንት ያስገቡ:\n👤 ስም: tsedey\n👉 ቁጥር: 0933638022\n\nከዚያ ያስገቡትን የብር መጠን ብቻ ይላኩ።\nምሳሌ: 100",
+        text: `🏦 ባንክ: TeleBirr\n\n⚠️ ከ TeleBirr ወደ TeleBirr ብቻ ያስገቡ።\n\nእባክዎ ብሩን ወደዚህ አካውንት ያስገቡ:\n👤 ስም: tsedey\n👉 ቁጥር: ${depositNumber || "Not configured"}\n\nከዚያ ያስገቡትን የብር መጠን ብቻ ይላኩ።\nምሳሌ: 100`,
         reply_markup: mainMenu(),
       });
     } else if (text === "💸 Withdraw" && message.from?.id) {

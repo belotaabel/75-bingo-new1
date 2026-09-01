@@ -29,6 +29,7 @@ type GameState = {
   calledNumbers: number[];
   currentBall: number | null;
   playerCount: number;
+  cardCount: number;
   prizeAmount: number;
   status: string;
   winners: BingoWinner[];
@@ -194,6 +195,7 @@ function WalletPanel({
           </div>
           <form onSubmit={submitDeposit}>
             <h3>Deposit request</h3>
+            <p className="deposit-receiver">TeleBirr receiving number: <strong>{wallet?.depositReceiver ?? "Not configured"}</strong></p>
             <p className="wallet-hint">First deposit bonus: 65% · Second and later: 20%</p>
             <input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(event) => setWalletForm({ ...walletForm, amount: event.target.value })} />
             <input required placeholder="Payment reference" value={walletForm.reference} onChange={(event) => setWalletForm({ ...walletForm, reference: event.target.value })} />
@@ -244,6 +246,7 @@ export default function Index() {
   const [called, setCalled] = useState<Set<number>>(new Set());
   const [currentBall, setCurrentBall] = useState<number | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
+  const [currentCardCount, setCurrentCardCount] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [selectionEndsAt, setSelectionEndsAt] = useState<string | null>(null);
   const [selectionGameStatus, setSelectionGameStatus] = useState<string | null>(null);
@@ -305,7 +308,7 @@ export default function Index() {
   useEffect(() => { if (panel === "wallet") loadWallet().catch((error) => setNotice(error.message)); }, [panel]);
   useEffect(() => {
     const url = `${apiBase}/api/game?gameType=${gameType}${user ? `&userId=${user.id}` : ""}`;
-    const applyGameInfo = (activeGame: { id?: string | number; status?: string; selectionEndsAt?: string | null; occupiedCardNumbers?: unknown } | null) => {
+    const applyGameInfo = (activeGame: { id?: string | number; status?: string; selectionEndsAt?: string | null; occupiedCardNumbers?: unknown; cardCount?: number } | null) => {
       if (!activeGame) return;
       if (activeGame.id !== undefined) {
         const nextGameId = String(activeGame.id);
@@ -317,6 +320,7 @@ export default function Index() {
         setGameId(nextGameId);
       }
       setSelectionGameStatus(activeGame.status ?? null);
+      setCurrentCardCount(activeGame.cardCount ?? 0);
       if (activeGame.selectionEndsAt) {
         setSelectionEndsAt(activeGame.selectionEndsAt);
       } else {
@@ -382,6 +386,7 @@ export default function Index() {
     socket.on("game:announcement", ({ message }: { message?: string }) => setNotice(message || "Game started"));
     socket.on("game:state", (state: GameState) => {
       setGame(state);
+      setCurrentCardCount(state.cardCount);
       setFinalizing(state.status === "finalizing");
       // Keep the completed round mounted so its winner payload can be shown
       // before the next-round reset runs. Previously `complete` immediately
@@ -526,8 +531,8 @@ export default function Index() {
           <div className="stat purple">
             <Users />
             <span>
-              <small>ተጫዋቾች</small>
-              <b>{game?.playerCount ?? 0}/200</b>
+              <small>የአሁኑ ጨዋታ ካርዶች</small>
+            <b>{game?.cardCount ?? currentCardCount}</b>
             </span>
           </div>
           <div className="stat blue">
@@ -629,8 +634,8 @@ export default function Index() {
         <div className="stat purple">
           <Users />
           <span>
-            <small>ተጫዋቾች</small>
-            <b>{game?.playerCount ?? 0}/200</b>
+            <small>የአሁኑ ጨዋታ ካርዶች</small>
+            <b>{game?.cardCount ?? currentCardCount}</b>
           </span>
         </div>
         <div className="stat blue">
