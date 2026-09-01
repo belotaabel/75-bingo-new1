@@ -538,6 +538,7 @@ export default function Index() {
         </div>
       </section>
       <div className="game-id selection-game-id">Game ID: {game?.gameId ?? gameId ?? "—"}</div>
+      <p className="purchase-note">Card fee: Player Balance first, then Main Balance</p>
       <div className="selection-countdown" aria-live="polite">
         <span>{selectionLocked ? "ጨዋታ እየተካሄደ ነው" : "ጨዋታው ይጀምራል"}</span>
         <b>{selectionLocked ? "00" : countdown ?? 50}</b>

@@ -520,11 +520,16 @@ export async function persistSelectedCards(gameId: string, userId: number, cardN
     );
     const newCards = storedCards.filter((card) => !existing.rows.some((row) => Number(row.card_number) === card));
     if (newCards.length) {
-      const balance = await client.query("SELECT player_balance FROM balances WHERE user_id = $1 FOR UPDATE", [userId]);
+      const balance = await client.query("SELECT player_balance, main_balance FROM balances WHERE user_id = $1 FOR UPDATE", [userId]);
       const total = newCards.length * 10;
-      if (!balance.rowCount || Number(balance.rows[0].player_balance) < total) throw new Error("Insufficient player balance");
-      await client.query("UPDATE balances SET player_balance = player_balance - $1, updated_at = NOW() WHERE user_id = $2", [total, userId]);
-      await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'card_purchase', $2, 'player', 'approved', $3)", [userId, total, `game:${gameId}`]);
+      const playerBalance = Number(balance.rows[0]?.player_balance ?? 0);
+      const mainBalance = Number(balance.rows[0]?.main_balance ?? 0);
+      if (!balance.rowCount || playerBalance + mainBalance < total) throw new Error("Insufficient balance");
+      const playerDebit = Math.min(playerBalance, total);
+      const mainDebit = total - playerDebit;
+      await client.query("UPDATE balances SET player_balance = player_balance - $1, main_balance = main_balance - $2, updated_at = NOW() WHERE user_id = $3", [playerDebit, mainDebit, userId]);
+      if (playerDebit > 0) await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'card_purchase', $2, 'player', 'approved', $3)", [userId, playerDebit, `game:${gameId}:player`]);
+      if (mainDebit > 0) await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'card_purchase', $2, 'main', 'approved', $3)", [userId, mainDebit, `game:${gameId}:main`]);
     }
     await client.query(
       `DELETE FROM game_cards WHERE game_id = $1 AND user_id = $2 AND NOT (card_number = ANY($3::int[]))`,
