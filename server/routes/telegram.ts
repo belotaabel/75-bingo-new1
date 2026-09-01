@@ -51,7 +51,7 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
   const chatId = message?.chat?.id;
   const text = message?.text;
   const contact = message?.contact;
-  const miniAppUrl = process.env.MINI_APP_URL ?? process.env.APP_URL;
+  const miniAppUrl = process.env.MINI_APP_URL ?? process.env.APP_URL ?? process.env.RENDER_EXTERNAL_URL;
 
   if (!token || !chatId) {
     res.sendStatus(200);
