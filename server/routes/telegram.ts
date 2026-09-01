@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { createDepositRequest, createWithdrawalRequest, getTelegramProfile, registerTelegramUser, reviewDepositRequest } from "../db";
+import { createDepositRequest, createWithdrawalRequest, getTelegramProfile, recordReferralRegistration, registerTelegramUser, reviewDepositRequest, reviewWithdrawalRequest } from "../db";
 
 const depositSteps = new Map<number, { step: "amount" | "reference"; amount?: number }>();
 const withdrawalSteps = new Map<number, { step: "amount" | "account" | "owner"; amount?: number; account?: string }>();
@@ -62,13 +62,15 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
   if (callback?.data && callback.from?.id === Number(process.env.TELEGRAM_ADMIN_CHAT_ID)) {
     const [action, transactionIdText] = String(callback.data).split(":");
     const transactionId = Number(transactionIdText);
-    if ((action === "deposit_approve" || action === "deposit_reject") && Number.isSafeInteger(transactionId)) {
+    if ((action === "deposit_approve" || action === "deposit_reject" || action === "withdraw_approve" || action === "withdraw_reject") && Number.isSafeInteger(transactionId)) {
       try {
-        await reviewDepositRequest(transactionId, action === "deposit_approve");
-        await sendTelegramMessage(token, chatId, { text: `${action === "deposit_approve" ? "✅ Deposit ተፈቅዷል" : "❌ Deposit ተሰርዟል"}\nTransaction ID: ${transactionId}` });
+        const approved = action.endsWith("approve");
+        if (action.startsWith("deposit")) await reviewDepositRequest(transactionId, approved);
+        else await reviewWithdrawalRequest(transactionId, approved);
+        await sendTelegramMessage(token, chatId, { text: `${approved ? "✅" : "❌"} ${action.startsWith("deposit") ? "Deposit" : "Withdraw"} ${approved ? "ተፈቅዷል" : "ተሰርዟል"}\nTransaction ID: ${transactionId}` });
       } catch (error) {
-        console.error("Telegram deposit review failed", error);
-        await sendTelegramMessage(token, chatId, { text: "ይህን Deposit ጥያቄ ማስተካከል አልተቻለም። ቀድሞ ተከናውኖ ሊሆን ይችላል።" });
+        console.error("Telegram transaction review failed", error);
+        await sendTelegramMessage(token, chatId, { text: "ይህን የገንዘብ ጥያቄ ማስተካከል አልተቻለም። ቀድሞ ተከናውኖ ሊሆን ይችላል።" });
       }
     }
     await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callback_query_id: callback.id }) });
@@ -91,6 +93,11 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
           username: message.from.username,
           displayName: name || message.from.username || `Telegram User ${message.from.id}`,
         });
+        const referralMatch = typeof text === "string" ? text.match(/^\/start\s+ref_(\d+)$/) : null;
+        if (referralMatch) {
+          const reward = await recordReferralRegistration(Number(referralMatch[1]), message.from.id);
+          if (reward.credited) await sendTelegramMessage(token, chatId, { text: `🎁 የInvite ሽልማት ${reward.amount} ብር ተጨምሯል።` });
+        }
       } catch (error) {
         console.error("Telegram /start user registration failed", error);
       }
@@ -156,9 +163,9 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
         const transaction = await createWithdrawalRequest(message.from.id, state.amount!, state.account!, text.trim());
         withdrawalSteps.delete(message.from.id);
         const adminChatId = Number(process.env.TELEGRAM_ADMIN_CHAT_ID);
-        if (Number.isSafeInteger(adminChatId)) await sendTelegramMessage(token, adminChatId, { text: `🔔 አዲስ Withdraw ጥያቄ\nUser: ${message.from.id}\nAmount: ${transaction.amount} ETB\nAccount: ${state.account}\nOwner: ${text.trim()}\nTransaction ID: ${transaction.id}\nStatus: Pending` });
+        if (Number.isSafeInteger(adminChatId)) await sendTelegramMessage(token, adminChatId, { text: `🔔 አዲስ Withdraw ጥያቄ\nUser: ${message.from.id}\nAmount: ${transaction.amount} ETB\nAccount: ${state.account}\nOwner: ${text.trim()}\nTransaction ID: ${transaction.id}\nStatus: Pending`, reply_markup: { inline_keyboard: [[{ text: "✅ Approve", callback_data: `withdraw_approve:${transaction.id}` }, { text: "❌ Reject", callback_data: `withdraw_reject:${transaction.id}` }]] } });
         await sendTelegramMessage(token, chatId, { text: `✅ Withdraw ጥያቄዎ ተቀብሏል።\nመጠን: ${transaction.amount} ETB\nሁኔታ: Pending`, reply_markup: mainMenu() });
-      } catch (error) { withdrawalSteps.delete(message.from.id); await sendTelegramMessage(token, chatId, { text: error instanceof Error && error.message === "Insufficient balance" ? "በቂ balance የለዎትም።" : "Withdraw ጥያቄውን ማስመዝገብ አልተቻለም።", reply_markup: mainMenu() }); }
+      } catch (error) { withdrawalSteps.delete(message.from.id); await sendTelegramMessage(token, chatId, { text: error instanceof Error && error.message === "Insufficient main balance" ? "በቂ Main Balance የለዎትም።" : "Withdraw ጥያቄውን ማስመዝገብ አልተቻለም።", reply_markup: mainMenu() }); }
     } else if (message.from?.id && depositSteps.get(message.from.id)?.step === "amount") {
       const amount = Number(text.replace(/[, ]/g, ""));
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -195,7 +202,7 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
       const inviteLink = botUsername ? `https://t.me/${botUsername}?start=ref_${message.from.id}` : null;
       await sendTelegramMessage(token, chatId, {
         text: inviteLink
-          ? `🔗 የእርስዎ የInvite Link:\n\n${inviteLink}\n\nይህን link ለጓደኞችዎ ያጋሩ።`
+          ? `🔗 የእርስዎ የInvite Link:\n\n${inviteLink}\n\n5 ሰዎች ሲመዘገቡ 10 ብር Player Balance ያገኛሉ።\nይህን link ለጓደኞችዎ ያጋሩ።`
           : "የInvite Link ለማመንጨት TELEGRAM_BOT_USERNAME በserver environment ውስጥ ያስገቡ።",
         reply_markup: mainMenu(),
       });
@@ -206,7 +213,7 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
           await sendTelegramMessage(token, chatId, { text: "መለያዎ አልተመዘገበም። /start ይላኩ።", reply_markup: mainMenu() });
         } else {
           await sendTelegramMessage(token, chatId, {
-            text: `👤 የእኔ ፕሮፋይል\n\nስም: ${profile.display_name}\nUsername: ${profile.username ? `@${profile.username}` : "—"}\nTelegram ID: ${profile.telegram_id}\nስልክ: ${profile.phone ?? "—"}\nባላንስ: ${profile.balance} ብር\nየተያዙ ካርዶች: ${profile.card_count}`,
+            text: `👤 የእኔ ፕሮፋይል\n\nስም: ${profile.display_name}\nUsername: ${profile.username ? `@${profile.username}` : "—"}\nTelegram ID: ${profile.telegram_id}\nስልክ: ${profile.phone ?? "—"}\nPlayer Balance: ${profile.player_balance} ብር\nMain Balance: ${profile.main_balance} ብር\nየተያዙ ካርዶች: ${profile.card_count}`,
             reply_markup: mainMenu(),
           });
         }

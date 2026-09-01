@@ -10,7 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { io } from "socket.io-client";
-import type { BingoWinner } from "@shared/api";
+import type { BingoWinner, WalletResponse } from "@shared/api";
 
 type Cell = number | null;
 type Card = { card_number: number; rows: Cell[][] };
@@ -20,6 +20,8 @@ type User = {
   username: string | null;
   display_name: string;
   balance: number | string;
+  player_balance: number | string;
+  main_balance: number | string;
 };
 type GameType = "75";
 type GameState = {
@@ -141,7 +143,7 @@ export default function Index() {
   const [finalizing, setFinalizing] = useState(false);
   const [notice, setNotice] = useState("ካርዶች እየተጫኑ ነው...");
   const [panel, setPanel] = useState<"profile" | "wallet" | null>(null);
-  const [wallet, setWallet] = useState<{ profile: User; transactions: Array<{ id: number; type: string; amount: string | number; status: string; external_reference?: string; created_at: string }> } | null>(null);
+  const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [walletForm, setWalletForm] = useState({ amount: "", reference: "", account: "", owner: "" });
   const [walletBusy, setWalletBusy] = useState(false);
   const loadWallet = async () => {
@@ -484,7 +486,7 @@ export default function Index() {
             </div>
           </>
         )}
-        {panel && <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}><button className="icon-button" onClick={() => setPanel(null)} aria-label="Close"><ArrowLeft /></button><h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>{panel === "profile" ? <p>{user?.display_name || "Telegram player"}</p> : <><p>ቀሪ ሂሳብ: <strong>{wallet?.profile.balance ?? user?.balance ?? 0} ብር</strong></p><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/deposit`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }) }); if (!response.ok) throw new Error((await response.json()).error || "Deposit failed"); setWalletForm({ ...walletForm, amount: "", reference: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Deposit failed"); } finally { setWalletBusy(false); } }}><h3>Deposit request</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Payment reference" value={walletForm.reference} onChange={(e) => setWalletForm({ ...walletForm, reference: e.target.value })} /><button disabled={walletBusy}>Submit deposit</button></form><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/withdraw`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }) }); if (!response.ok) throw new Error((await response.json()).error || "Withdrawal failed"); setWalletForm({ ...walletForm, amount: "", account: "", owner: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Withdrawal failed"); } finally { setWalletBusy(false); } }}><h3>Withdraw</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Account" value={walletForm.account} onChange={(e) => setWalletForm({ ...walletForm, account: e.target.value })} /><input required placeholder="Account owner" value={walletForm.owner} onChange={(e) => setWalletForm({ ...walletForm, owner: e.target.value })} /><button disabled={walletBusy}>Submit withdrawal</button></form><h3>Recent transactions</h3>{wallet?.transactions.map((transaction) => <p key={transaction.id}><b>{transaction.type === "deposit" ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>)}</>}</aside>}
+        {panel && <aside className="account-panel" role="dialog" aria-label={panel === "profile" ? "Profile" : "Wallet"}><button className="icon-button" onClick={() => setPanel(null)} aria-label="Close"><ArrowLeft /></button><h2>{panel === "profile" ? "መገለጫ" : "Wallet"}</h2>{panel === "profile" ? <p>{user?.display_name || "Telegram player"}</p> : <><div className="wallet-balances"><p><span>Player Balance</span><strong>{wallet?.profile.player_balance ?? user?.player_balance ?? 0} ብር</strong><small>Deposit + Invite · ለመውጣት አይቻልም</small></p><p><span>Main Balance</span><strong>{wallet?.profile.main_balance ?? user?.main_balance ?? 0} ብር</strong><small>የጨዋታ ውጤት · Withdrawable</small></p></div><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/deposit`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, reference: walletForm.reference }) }); if (!response.ok) throw new Error((await response.json()).error || "Deposit failed"); setWalletForm({ ...walletForm, amount: "", reference: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Deposit failed"); } finally { setWalletBusy(false); } }}><h3>Deposit request</h3><p className="wallet-hint">First deposit bonus: 65% · Second and later: 20%</p><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Payment reference" value={walletForm.reference} onChange={(e) => setWalletForm({ ...walletForm, reference: e.target.value })} /><button disabled={walletBusy}>Submit deposit</button></form><form onSubmit={async (event) => { event.preventDefault(); setWalletBusy(true); try { const response = await fetch(`${apiBase}/api/wallet/withdraw`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify({ amount: walletForm.amount, account: walletForm.account, owner: walletForm.owner }) }); if (!response.ok) throw new Error((await response.json()).error || "Withdrawal failed"); setWalletForm({ ...walletForm, amount: "", account: "", owner: "" }); await loadWallet(); } catch (error) { setNotice(error instanceof Error ? error.message : "Withdrawal failed"); } finally { setWalletBusy(false); } }}><h3>Withdraw from Main Balance</h3><input required type="number" min="1" step="0.01" placeholder="Amount" value={walletForm.amount} onChange={(e) => setWalletForm({ ...walletForm, amount: e.target.value })} /><input required placeholder="Account" value={walletForm.account} onChange={(e) => setWalletForm({ ...walletForm, account: e.target.value })} /><input required placeholder="Account owner" value={walletForm.owner} onChange={(e) => setWalletForm({ ...walletForm, owner: e.target.value })} /><button disabled={walletBusy}>Submit withdrawal</button></form><h3>Recent transactions</h3>{wallet?.transactions.map((transaction) => <p key={transaction.id}><b>{["deposit", "deposit_bonus", "invite_bonus", "bingo_prize"].includes(transaction.type) ? "+" : "-"}{transaction.amount} ብር</b> · {transaction.status} · {new Date(transaction.created_at).toLocaleDateString()}</p>)}</>}</aside>}
       </main>
     );
   return (
@@ -523,8 +525,8 @@ export default function Index() {
         <div className="stat blue">
           <Wallet />
           <span>
-            <small>ቀሪ ሂሳብ</small>
-            <b>{user?.balance ?? 0} ብር</b>
+            <small>Player Balance</small>
+            <b>{user?.player_balance ?? 0} ብር</b>
           </span>
         </div>
         <div className="stat gold">

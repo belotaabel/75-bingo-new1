@@ -70,10 +70,15 @@ export async function initializeDatabase() {
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       balance NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
+      player_balance NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (player_balance >= 0),
+      main_balance NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (main_balance >= 0),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE balances ADD COLUMN IF NOT EXISTS balance NUMERIC(12, 2) NOT NULL DEFAULT 0;
+    ALTER TABLE balances ADD COLUMN IF NOT EXISTS player_balance NUMERIC(12, 2) NOT NULL DEFAULT 0;
+    ALTER TABLE balances ADD COLUMN IF NOT EXISTS main_balance NUMERIC(12, 2) NOT NULL DEFAULT 0;
+    UPDATE balances SET player_balance = balance, balance = 0 WHERE player_balance = 0 AND balance <> 0;
     ALTER TABLE balances ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE balances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
@@ -89,6 +94,8 @@ export async function initializeDatabase() {
     );
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS type TEXT;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS amount NUMERIC(12, 2);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS balance_type TEXT NOT NULL DEFAULT 'player';
+    UPDATE transactions SET balance_type = 'main' WHERE type = 'bingo_prize';
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_reference TEXT;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -157,6 +164,7 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS winners_game_id_idx ON winners(game_id);
     CREATE INDEX IF NOT EXISTS winners_user_id_idx ON winners(user_id);
     CREATE INDEX IF NOT EXISTS transactions_user_id_created_at_idx ON transactions(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS transactions_balance_type_idx ON transactions(balance_type);
     CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status);
     CREATE INDEX IF NOT EXISTS transactions_external_reference_idx ON transactions(external_reference);
     CREATE INDEX IF NOT EXISTS user_promo_codes_user_id_idx ON user_promo_codes(user_id);
@@ -265,13 +273,53 @@ export async function registerTelegramUser(input: {
       [input.telegramId, input.username ?? null, input.displayName, input.phone],
     );
     await client.query(
-      `INSERT INTO balances (user_id, balance)
-       VALUES ($1, 0)
+      `INSERT INTO balances (user_id, balance, player_balance, main_balance)
+       VALUES ($1, 0, 0, 0)
        ON CONFLICT (user_id) DO NOTHING`,
       [user.rows[0].id],
     );
     await client.query("COMMIT");
     return user.rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function recordReferralRegistration(referrerTelegramId: number, referredTelegramId: number) {
+  if (!db || referrerTelegramId === referredTelegramId) return { credited: false, amount: 0 };
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const referrer = await client.query("SELECT id FROM users WHERE telegram_id = $1 FOR UPDATE", [referrerTelegramId]);
+    const referred = await client.query("SELECT id FROM users WHERE telegram_id = $1", [referredTelegramId]);
+    if (!referrer.rowCount || !referred.rowCount) {
+      await client.query("COMMIT");
+      return { credited: false, amount: 0 };
+    }
+    const referral = await client.query(
+      "INSERT INTO referrals (referrer_id, referred_id, status) VALUES ($1, $2, 'completed') ON CONFLICT (referred_id) DO NOTHING RETURNING id",
+      [referrer.rows[0].id, referred.rows[0].id],
+    );
+    if (!referral.rowCount) {
+      await client.query("COMMIT");
+      return { credited: false, amount: 0 };
+    }
+    const countResult = await client.query("SELECT COUNT(*)::int AS count FROM referrals WHERE referrer_id = $1 AND status = 'completed'", [referrer.rows[0].id]);
+    const count = Number(countResult.rows[0].count);
+    const reward = count % 5 === 0 ? 10 : 0;
+    if (reward > 0) {
+      await client.query("UPDATE referrals SET reward_amount = $1, completed_at = NOW() WHERE id = $2", [reward, referral.rows[0].id]);
+      await client.query("UPDATE balances SET player_balance = player_balance + $1, updated_at = NOW() WHERE user_id = $2", [reward, referrer.rows[0].id]);
+      await client.query(
+        "INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'invite_bonus', $2, 'player', 'approved', $3)",
+        [referrer.rows[0].id, reward, `invite-milestone:${count}`],
+      );
+    }
+    await client.query("COMMIT");
+    return { credited: reward > 0, amount: reward };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -287,10 +335,10 @@ export async function createWithdrawalRequest(telegramId: number, amount: number
     await client.query("BEGIN");
     const user = await client.query("SELECT id FROM users WHERE telegram_id = $1 FOR UPDATE", [telegramId]);
     if (!user.rowCount) throw new Error("Telegram user is not registered");
-    const balance = await client.query("SELECT balance FROM balances WHERE user_id = $1 FOR UPDATE", [user.rows[0].id]);
-    if (!balance.rowCount || Number(balance.rows[0].balance) < amount) throw new Error("Insufficient balance");
-    await client.query("UPDATE balances SET balance = balance - $1, updated_at = NOW() WHERE user_id = $2", [amount, user.rows[0].id]);
-    const result = await client.query("INSERT INTO transactions (user_id, type, amount, status, external_reference) VALUES ($1, 'withdraw', $2, 'pending', $3) RETURNING id, amount", [user.rows[0].id, amount, JSON.stringify({ account, ownerName })]);
+    const balance = await client.query("SELECT main_balance FROM balances WHERE user_id = $1 FOR UPDATE", [user.rows[0].id]);
+    if (!balance.rowCount || Number(balance.rows[0].main_balance) < amount) throw new Error("Insufficient main balance");
+    await client.query("UPDATE balances SET main_balance = main_balance - $1, updated_at = NOW() WHERE user_id = $2", [amount, user.rows[0].id]);
+    const result = await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'withdraw', $2, 'main', 'pending', $3) RETURNING id, amount", [user.rows[0].id, amount, JSON.stringify({ account, ownerName })]);
     await client.query("COMMIT");
     return result.rows[0];
   } catch (error) { await client.query("ROLLBACK"); throw error; }
@@ -303,13 +351,25 @@ export async function reviewDepositRequest(transactionId: number, approved: bool
   try {
     await client.query("BEGIN");
     const transaction = await client.query(
-      "SELECT id, user_id, amount, status FROM transactions WHERE id = $1 FOR UPDATE",
+      "SELECT id, user_id, amount, status FROM transactions WHERE id = $1 AND type = 'deposit' FOR UPDATE",
       [transactionId],
     );
     if (!transaction.rowCount || transaction.rows[0].status !== "pending") throw new Error("Deposit request is no longer pending");
     const row = transaction.rows[0];
     if (approved) {
-      await client.query("UPDATE balances SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2", [row.amount, row.user_id]);
+      const approvedDeposits = await client.query(
+        "SELECT COUNT(*)::int AS count FROM transactions WHERE user_id = $1 AND type = 'deposit' AND status = 'approved'",
+        [row.user_id],
+      );
+      const rate = Number(approvedDeposits.rows[0].count) === 0 ? 0.65 : 0.20;
+      const bonus = Math.round(Number(row.amount) * rate * 100) / 100;
+      await client.query("UPDATE balances SET player_balance = player_balance + $1 + $2, updated_at = NOW() WHERE user_id = $3", [row.amount, bonus, row.user_id]);
+      if (bonus > 0) {
+        await client.query(
+          "INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'deposit_bonus', $2, 'player', 'approved', $3)",
+          [row.user_id, bonus, `deposit-bonus:${transactionId}`],
+        );
+      }
     }
     await client.query("UPDATE transactions SET status = $1, updated_at = NOW() WHERE id = $2", [approved ? "approved" : "rejected", transactionId]);
     await client.query("COMMIT");
@@ -330,7 +390,7 @@ export async function reviewWithdrawalRequest(transactionId: number, approved: b
     const transaction = await client.query("SELECT id, user_id, amount, status FROM transactions WHERE id = $1 AND type = 'withdraw' FOR UPDATE", [transactionId]);
     if (!transaction.rowCount || transaction.rows[0].status !== "pending") throw new Error("Withdrawal request is no longer pending");
     const row = transaction.rows[0];
-    if (!approved) await client.query("UPDATE balances SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2", [row.amount, row.user_id]);
+    if (!approved) await client.query("UPDATE balances SET main_balance = main_balance + $1, updated_at = NOW() WHERE user_id = $2", [row.amount, row.user_id]);
     await client.query("UPDATE transactions SET status = $1, updated_at = NOW() WHERE id = $2", [approved ? "approved" : "rejected", transactionId]);
     await client.query("COMMIT");
     return row;
@@ -341,8 +401,8 @@ export async function reviewWithdrawalRequest(transactionId: number, approved: b
 export async function createDepositRequest(telegramId: number, amount: number, reference: string) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const result = await db.query(
-    `INSERT INTO transactions (user_id, type, amount, status, external_reference)
-     SELECT id, 'deposit', $2, 'pending', $3
+    `INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference)
+     SELECT id, 'deposit', $2, 'player', 'pending', $3
      FROM users
      WHERE telegram_id = $1
      RETURNING id, amount, status, external_reference`,
@@ -355,7 +415,7 @@ export async function createDepositRequest(telegramId: number, amount: number, r
 export async function getWalletTransactions(telegramId: number) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const result = await db.query(
-    `SELECT t.id, t.type, t.amount, t.status, t.external_reference, t.created_at
+    `SELECT t.id, t.type, t.amount, t.balance_type, t.status, t.external_reference, t.created_at
      FROM transactions t JOIN users u ON u.id = t.user_id
      WHERE u.telegram_id = $1 ORDER BY t.created_at DESC LIMIT 25`,
     [telegramId],
@@ -367,13 +427,15 @@ export async function getTelegramProfile(telegramId: number) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const result = await db.query(
     `SELECT u.id, u.telegram_id, u.username, u.display_name, u.phone,
-            COALESCE(b.balance, 0)::numeric AS balance,
+            COALESCE(b.player_balance, 0)::numeric AS player_balance,
+            COALESCE(b.main_balance, 0)::numeric AS main_balance,
+            (COALESCE(b.player_balance, 0) + COALESCE(b.main_balance, 0))::numeric AS balance,
             COUNT(DISTINCT gc.card_number)::int AS card_count
      FROM users u
      LEFT JOIN balances b ON b.user_id = u.id
      LEFT JOIN game_cards gc ON gc.user_id = u.id
      WHERE u.telegram_id = $1
-     GROUP BY u.id, b.balance`,
+     GROUP BY u.id, b.player_balance, b.main_balance`,
     [telegramId],
   );
   return result.rows[0] ?? null;
@@ -458,11 +520,11 @@ export async function persistSelectedCards(gameId: string, userId: number, cardN
     );
     const newCards = storedCards.filter((card) => !existing.rows.some((row) => Number(row.card_number) === card));
     if (newCards.length) {
-      const balance = await client.query("SELECT balance FROM balances WHERE user_id = $1 FOR UPDATE", [userId]);
+      const balance = await client.query("SELECT player_balance FROM balances WHERE user_id = $1 FOR UPDATE", [userId]);
       const total = newCards.length * 10;
-      if (!balance.rowCount || Number(balance.rows[0].balance) < total) throw new Error("Insufficient balance");
-      await client.query("UPDATE balances SET balance = balance - $1, updated_at = NOW() WHERE user_id = $2", [total, userId]);
-      await client.query("INSERT INTO transactions (user_id, type, amount, status, external_reference) VALUES ($1, 'card_purchase', $2, 'approved', $3)", [userId, total, `game:${gameId}`]);
+      if (!balance.rowCount || Number(balance.rows[0].player_balance) < total) throw new Error("Insufficient player balance");
+      await client.query("UPDATE balances SET player_balance = player_balance - $1, updated_at = NOW() WHERE user_id = $2", [total, userId]);
+      await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'card_purchase', $2, 'player', 'approved', $3)", [userId, total, `game:${gameId}`]);
     }
     await client.query(
       `DELETE FROM game_cards WHERE game_id = $1 AND user_id = $2 AND NOT (card_number = ANY($3::int[]))`,
@@ -559,8 +621,8 @@ export async function claimGameWinners(gameId: string) {
         [gameId, candidate.userId, candidate.cardNumber, prizeAmount, candidate.rows],
       );
       if (!inserted.rowCount) continue;
-      await client.query("UPDATE balances SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2", [prizeAmount, candidate.userId]);
-      await client.query("INSERT INTO transactions (user_id, type, amount, status, external_reference) VALUES ($1, 'bingo_prize', $2, 'approved', $3)", [candidate.userId, prizeAmount, `bingo:${gameId}:${candidate.cardNumber}`]);
+      await client.query("UPDATE balances SET main_balance = main_balance + $1, updated_at = NOW() WHERE user_id = $2", [prizeAmount, candidate.userId]);
+      await client.query("INSERT INTO transactions (user_id, type, amount, balance_type, status, external_reference) VALUES ($1, 'bingo_prize', $2, 'main', 'approved', $3)", [candidate.userId, prizeAmount, `bingo:${gameId}:${candidate.cardNumber}`]);
       await client.query("INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, 'bingo_winner_paid', 'game', $2, $3::jsonb)", [candidate.userId, gameId, JSON.stringify({ cardNumber: candidate.cardNumber, amount: prizeAmount, winningRows: candidate.rows })]);
       winners.push({ ...candidate, prizeAmount });
     }

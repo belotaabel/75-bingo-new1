@@ -169,6 +169,13 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible { outli
 .account-panel form button { padding: 10px; border-radius: 9px; background: var(--gold); color: #38250b; font-weight: 800; }
 .account-panel form button:disabled { opacity: .6; cursor: wait; }
 
+.wallet-balances { display: grid; gap: 10px; margin: 18px 0; }
+.wallet-balances p { display: grid; gap: 3px; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(16, 41, 29, .8); }
+.wallet-balances p:last-child { border-color: var(--gold-deep); background: rgba(62, 48, 19, .38); }
+.wallet-balances span { color: #eaf5e7; font-size: 13px; font-weight: 700; }
+.wallet-balances strong { color: var(--gold-bright); font-size: 20px; }
+.wallet-balances small, .wallet-hint { color: var(--muted); font-family: "Noto Sans Ethiopic", sans-serif; font-size: 11px; }
+.wallet-hint { margin: 0; }
 .bottom-nav { position: fixed; z-index: 5; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; gap: min(7vw, 54px); min-height: 100px; padding: 13px 24px 20px; background: rgba(5, 19, 12, .96); box-shadow: 0 -10px 30px rgba(9, 58, 31, .48); }
 .bottom-nav button { display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 145px; height: 59px; border: 1px solid var(--border); border-radius: 30px; background: #0b2417; box-shadow: 0 0 12px rgba(24, 118, 70, .25); color: var(--muted); font-size: 19px; }
 .bottom-nav .lobby { border-color: #70934e; color: #dce8ba; }
