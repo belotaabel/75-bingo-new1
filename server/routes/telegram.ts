@@ -11,7 +11,6 @@ function mainMenu() {
       [{ text: "📝 Register" }, playButton],
       [{ text: "🎁 Promo Code" }, { text: "💰 Deposit" }],
       [{ text: "💸 Withdraw" }, { text: "🔗 Invite & Earn" }],
-      [{ text: "🤝 Agent Dashboard" }],
       [{ text: "👤 Profile & Account" }, { text: "🆘 Support" }],
     ],
     resize_keyboard: true,
@@ -129,7 +128,6 @@ export const handleTelegramWebhook: RequestHandler = async (req, res) => {
       "💰 Deposit": "Deposit ለማድረግ Mini App ውስጥ ይግቡ።",
       "💸 Withdraw": "Withdraw ለማድረግ Mini App ውስጥ ይግቡ።",
       "🔗 Invite & Earn": "ጓደኞችዎን ይጋብዙ እና ሽልማት ያግኙ።",
-      "🤝 Agent Dashboard": "Agent Dashboard ለመጠቀም የAgent መለያ ያስፈልጋል።",
       "👤 Profile & Account": "የመለያዎን መረጃ Mini App ውስጥ ይመልከቱ።",
       "🆘 Support": "እርዳታ ከፈለጉ የጉዳይዎን መልዕክት ይላኩ።",
     };
